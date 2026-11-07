@@ -4,9 +4,10 @@ import React from "react";
 
 /**
  * High-craft Festive Diwali Fairy String Lights, Marigold Toran & Swaying Akash Kandils.
- * - Uses `z-10` so it never covers interactive header buttons (`z-20`).
- * - Side hanging Akash Kandils are shown on large screens (`hidden xl:block`) in the outer margins
- *   so they never overlap the mobile/tablet header card or get clipped!
+ * - Uses `z-40 pointer-events-none` so it stays ON TOP of all scrolling page content
+ *   (cards scroll underneath the lights) while never blocking clicks or taps!
+ * - Hanging Akash Kandil lamps are visible on ALL screen sizes (scaled down cleanly on mobile
+ *   and full size on desktop).
  */
 export default function DiwaliDecorationLights() {
   const scallops = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -30,17 +31,17 @@ export default function DiwaliDecorationLights() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-10 select-none"
+      className="pointer-events-none fixed inset-x-0 top-0 z-40 select-none"
       aria-hidden="true"
     >
       {/* Top Warm Ambient Ceiling Glow */}
-      <div className="w-full h-14 bg-gradient-to-b from-[#FF9F1C]/35 via-[#FFE600]/10 to-transparent" />
+      <div className="w-full h-14 bg-gradient-to-b from-[#FF9F1C]/40 via-[#FFE600]/12 to-transparent" />
 
       {/* Main Scalloped Fairy Lights Garland SVG */}
       <svg
         viewBox="0 0 1600 115"
         preserveAspectRatio="xMidYMin slice"
-        className="-mt-14 w-full h-[54px] sm:h-[76px] md:h-[92px] drop-shadow-[0_6px_16px_rgba(255,159,28,0.55)]"
+        className="-mt-14 w-full h-[50px] sm:h-[68px] md:h-[84px] drop-shadow-[0_6px_16px_rgba(255,159,28,0.6)]"
       >
         <defs>
           <radialGradient id="diwaliBulbHalo" cx="50%" cy="50%" r="50%">
@@ -53,7 +54,14 @@ export default function DiwaliDecorationLights() {
 
         {/* Top Festive Maroon & Gold Border Bar */}
         <rect x="0" y="0" width="1600" height="8" fill="#4A1238" />
-        <line x1="0" y1="8" x2="1600" y2="8" stroke="#FFE600" strokeWidth="2.5" />
+        <line
+          x1="0"
+          y1="8"
+          x2="1600"
+          y2="8"
+          stroke="#FFE600"
+          strokeWidth="2.5"
+        />
 
         {scallops.map((idx) => {
           const span = 1600 / scallops.length;
@@ -85,7 +93,14 @@ export default function DiwaliDecorationLights() {
               />
 
               {/* Marigold flower clusters at each swag junction */}
-              <circle cx={x0} cy="12" r="7" fill="#FF7B00" stroke="#4A1238" strokeWidth="1.5" />
+              <circle
+                cx={x0}
+                cy="12"
+                r="7"
+                fill="#FF7B00"
+                stroke="#4A1238"
+                strokeWidth="1.5"
+              />
               <circle cx={x0} cy="12" r="3.5" fill="#FFE600" />
 
               {/* Glowing Fairy Light Bulbs */}
@@ -96,7 +111,9 @@ export default function DiwaliDecorationLights() {
                   <g
                     key={bIdx}
                     className={
-                      isEven ? "animate-bulb-twinkle" : "animate-bulb-twinkle-slow"
+                      isEven
+                        ? "animate-bulb-twinkle"
+                        : "animate-bulb-twinkle-slow"
                     }
                   >
                     <rect
@@ -150,18 +167,75 @@ export default function DiwaliDecorationLights() {
         })}
       </svg>
 
-      {/* Left Hanging Akash Kandil Lantern (Displayed on wide screens in the outer margin so it never overlaps the mobile header card) */}
-      <div className="hidden xl:block absolute top-1 left-4 animate-lantern-swing origin-top">
-        <svg width="64" height="145" viewBox="0 0 64 145" fill="none">
-          <line x1="32" y1="0" x2="32" y2="24" stroke="#4A1238" strokeWidth="3" />
-          <path d="M16 38 L32 22 L48 38" stroke="#4A1238" strokeWidth="2.5" fill="none" />
-          <rect x="14" y="36" width="36" height="10" rx="2.5" fill="#EF233C" stroke="#4A1238" strokeWidth="2.5" />
-          <rect x="10" y="46" width="44" height="32" rx="14" fill="#38BDF8" stroke="#4A1238" strokeWidth="2.5" />
-          <circle cx="22" cy="62" r="9.5" fill="#FF9F1C" stroke="#4A1238" strokeWidth="2.5" />
+      {/* Left Hanging Akash Kandil Lamp — Visible on Mobile, Tablet & Desktop */}
+      <div className="block absolute top-0.5 left-1 sm:left-2.5 md:left-4 animate-lantern-swing origin-top drop-shadow-[0_6px_14px_rgba(255,159,28,0.5)]">
+        <svg
+          viewBox="0 0 64 145"
+          fill="none"
+          className="w-8 h-[76px] sm:w-12 sm:h-[110px] md:w-14 md:h-[130px] lg:w-16 lg:h-[145px]"
+        >
+          <line
+            x1="32"
+            y1="0"
+            x2="32"
+            y2="24"
+            stroke="#4A1238"
+            strokeWidth="3"
+          />
+          <path
+            d="M16 38 L32 22 L48 38"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+            fill="none"
+          />
+          <rect
+            x="14"
+            y="36"
+            width="36"
+            height="10"
+            rx="2.5"
+            fill="#EF233C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
+          <rect
+            x="10"
+            y="46"
+            width="44"
+            height="32"
+            rx="14"
+            fill="#38BDF8"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
+          <circle
+            cx="22"
+            cy="62"
+            r="9.5"
+            fill="#FF9F1C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           <circle cx="22" cy="62" r="4.5" fill="#FFE600" />
-          <circle cx="42" cy="62" r="9.5" fill="#FF9F1C" stroke="#4A1238" strokeWidth="2.5" />
+          <circle
+            cx="42"
+            cy="62"
+            r="9.5"
+            fill="#FF9F1C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           <circle cx="42" cy="62" r="4.5" fill="#FFE600" />
-          <rect x="14" y="78" width="36" height="10" rx="2.5" fill="#EF233C" stroke="#4A1238" strokeWidth="2.5" />
+          <rect
+            x="14"
+            y="78"
+            width="36"
+            height="10"
+            rx="2.5"
+            fill="#EF233C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           {[17, 23, 29, 35, 41, 47].map((x) => (
             <line
               key={x}
@@ -177,18 +251,75 @@ export default function DiwaliDecorationLights() {
         </svg>
       </div>
 
-      {/* Right Hanging Akash Kandil Lantern */}
-      <div className="hidden xl:block absolute top-1 right-4 animate-lantern-swing origin-top">
-        <svg width="64" height="145" viewBox="0 0 64 145" fill="none">
-          <line x1="32" y1="0" x2="32" y2="24" stroke="#4A1238" strokeWidth="3" />
-          <path d="M16 38 L32 22 L48 38" stroke="#4A1238" strokeWidth="2.5" fill="none" />
-          <rect x="14" y="36" width="36" height="10" rx="2.5" fill="#EF233C" stroke="#4A1238" strokeWidth="2.5" />
-          <rect x="10" y="46" width="44" height="32" rx="14" fill="#38BDF8" stroke="#4A1238" strokeWidth="2.5" />
-          <circle cx="22" cy="62" r="9.5" fill="#FF9F1C" stroke="#4A1238" strokeWidth="2.5" />
+      {/* Right Hanging Akash Kandil Lamp — Visible on Mobile, Tablet & Desktop */}
+      <div className="block absolute top-0.5 right-1 sm:right-2.5 md:right-4 animate-lantern-swing origin-top drop-shadow-[0_6px_14px_rgba(255,159,28,0.5)]">
+        <svg
+          viewBox="0 0 64 145"
+          fill="none"
+          className="w-8 h-[76px] sm:w-12 sm:h-[110px] md:w-14 md:h-[130px] lg:w-16 lg:h-[145px]"
+        >
+          <line
+            x1="32"
+            y1="0"
+            x2="32"
+            y2="24"
+            stroke="#4A1238"
+            strokeWidth="3"
+          />
+          <path
+            d="M16 38 L32 22 L48 38"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+            fill="none"
+          />
+          <rect
+            x="14"
+            y="36"
+            width="36"
+            height="10"
+            rx="2.5"
+            fill="#EF233C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
+          <rect
+            x="10"
+            y="46"
+            width="44"
+            height="32"
+            rx="14"
+            fill="#38BDF8"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
+          <circle
+            cx="22"
+            cy="62"
+            r="9.5"
+            fill="#FF9F1C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           <circle cx="22" cy="62" r="4.5" fill="#FFE600" />
-          <circle cx="42" cy="62" r="9.5" fill="#FF9F1C" stroke="#4A1238" strokeWidth="2.5" />
+          <circle
+            cx="42"
+            cy="62"
+            r="9.5"
+            fill="#FF9F1C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           <circle cx="42" cy="62" r="4.5" fill="#FFE600" />
-          <rect x="14" y="78" width="36" height="10" rx="2.5" fill="#EF233C" stroke="#4A1238" strokeWidth="2.5" />
+          <rect
+            x="14"
+            y="78"
+            width="36"
+            height="10"
+            rx="2.5"
+            fill="#EF233C"
+            stroke="#4A1238"
+            strokeWidth="2.5"
+          />
           {[17, 23, 29, 35, 41, 47].map((x) => (
             <line
               key={x}

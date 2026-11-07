@@ -23,19 +23,16 @@ import {
 import {
   Flame,
   Search,
-  Trophy,
   Users,
   Zap,
   Sparkles,
   Camera,
   Eye,
   CheckCircle2,
-  PlusCircle,
   Activity,
   Swords,
   HelpCircle,
   X,
-  ShieldCheck,
   Github,
   Code2,
   AtSign,
@@ -881,7 +878,7 @@ export default function PatakhaArenaClient() {
       const nextUrl = `${window.location.pathname}?u=${encodeURIComponent(
         profile.handle
       )}`;
-      window.history.pushState({}, "", nextUrl);
+      window.history.replaceState({}, "", nextUrl);
     }
     topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -928,7 +925,7 @@ export default function PatakhaArenaClient() {
     profiles[0] ||
     null;
 
-  const effectiveMyHandle = myHandle || featuredProfile?.handle || "";
+  const effectiveMyHandle = myHandle || "";
   const myActiveBattlesCount = activeBattles.filter(
     (b) =>
       effectiveMyHandle &&
@@ -1107,11 +1104,10 @@ export default function PatakhaArenaClient() {
                       database so everyone on the site can see it!
                     </li>
                     <li>
-                      <strong>Track All Your Active Battles</strong>: The{" "}
-                      <strong>Live 1v1 Battle Command Center</strong> shows
-                      exactly how many battles you are playing, against whom,
-                      each battle&apos;s live countdown, and whether you are{" "}
-                      <strong>Winning or Trailing</strong>!
+                      <strong>Track All Live Battles Above Leaderboard</strong>:
+                      Scroll down to the <strong>Live 1v1 Arena Battles</strong>{" "}
+                      section right above the Leaderboard to see all ongoing
+                      matchups and your own battles!
                     </li>
                   </ol>
                 </div>
@@ -1127,7 +1123,8 @@ export default function PatakhaArenaClient() {
                   </div>
                   <ul className="list-disc list-inside space-y-1.5 text-amber-100/90">
                     <li>
-                      Open the <strong>&ldquo;📷 Photo / Rangoli Frame&rdquo;</strong>{" "}
+                      Open the{" "}
+                      <strong>&ldquo;📷 Photo / Rangoli Frame&rdquo;</strong>{" "}
                       tab and upload your photo, selfie, or Rangoli.
                     </li>
                     <li>
@@ -1212,34 +1209,87 @@ export default function PatakhaArenaClient() {
         </div>
       )}
 
-      {/* Main Content Container */}
+      {/* Main Content Container — Top padding clears the z-40 hanging lights & lamps */}
       <div
         ref={topStudioRef}
-        className="relative z-20 max-w-6xl mx-auto px-3 sm:px-6 pt-14 sm:pt-20 md:pt-24 space-y-5 sm:space-y-8"
+        className="relative z-20 max-w-6xl mx-auto px-3 sm:px-6 pt-14 sm:pt-20 md:pt-24 space-y-3 sm:space-y-4"
       >
-        {/* Top Compact Festival Header Card */}
-        <header className="text-center space-y-3">
-          <div className="inline-block w-full max-w-3xl mx-auto bg-gradient-to-b from-[#430A2E]/95 via-[#2C061E]/95 to-[#1D0313]/95 px-3.5 sm:px-7 py-3.5 sm:py-5 rounded-3xl matchbox-border backdrop-blur-md">
-            {/* Top Pills Row */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 mb-2">
-              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFE600] text-[#3B0726] text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
-                <Sparkles className="w-3 h-3 fill-current" />
-                Shubh Diwali Arena
+        {/* SLIM ONE-LINER HORIZONTAL FESTIVAL HEADER BAR (Framed cleanly between the hanging lamps on mobile & desktop) */}
+        <header className="max-w-5xl mx-7 sm:mx-10 md:mx-auto">
+          <div className="bg-[#230417]/95 border border-[#FFE600]/65 rounded-2xl sm:rounded-full px-3 sm:px-4 py-1.5 sm:py-2 flex flex-col md:flex-row items-center justify-between gap-1.5 sm:gap-2 shadow-[0_10px_28px_rgba(0,0,0,0.75)] backdrop-blur-md">
+            {/* Left Brand Icon + Title + Subtitle */}
+            <div
+              onClick={exitSpecialModesToStudio}
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-[#FFE600] via-[#FF9F1C] to-[#EF233C] border border-white/60 flex items-center justify-center shadow shrink-0">
+                <span className="text-xs sm:text-sm leading-none">🧨</span>
               </div>
+              <div className="text-left">
+                <h1 className="text-xs sm:text-base font-black tracking-tight leading-none text-white">
+                  Rate My <span className="text-[#FFE600]">Patakha</span>
+                </h1>
+                <p className="text-[9px] sm:text-[10px] font-semibold text-amber-200/80 mt-0.5 leading-none">
+                  {clans.length || 7} Cracker Clans • Photo/Rangoli Frames • 1v1
+                  Battles
+                </p>
+              </div>
+            </div>
 
-              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020F]/90 border border-[#FFE600]/60 text-[#FFE600] text-[10px] sm:text-xs font-black uppercase tracking-wider">
+            {/* Right Slim Stat Pills & Action Buttons (Single-line horizontal swipe on mobile, inline on desktop) */}
+            <div className="w-full md:w-auto flex items-center justify-start md:justify-end gap-1.5 overflow-x-auto no-scrollbar pb-0.5 md:pb-0">
+              <div className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/50 text-emerald-300 text-[10px] sm:text-[11px] font-extrabold">
                 <Eye className="w-3 h-3 text-emerald-400" />
                 <span>{visitorCount.toLocaleString()} Visitors</span>
               </div>
 
-              {/* 3-Vote Bonus Progress Pill */}
               <div
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/60 text-emerald-300 text-[10px] sm:text-xs font-black"
-                title="Upvote 3 other users to automatically earn +1 Bonus Vote for your own profile!"
+                onClick={() =>
+                  leaderboardSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+                }
+                className="shrink-0 cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] border border-[#FFE600]/35 text-amber-100 text-[10px] sm:text-[11px] font-extrabold hover:border-[#FFE600] transition"
+                title="Registered Users"
               >
-                <Gift className="w-3 h-3 text-[#FFE600]" />
-                <span>3 Votes to Others = +1 Self Bonus ({progressInCycle}/3)</span>
+                <Users className="w-3 h-3 text-[#FFE600]" />
+                <span>{totalCreators}</span>
               </div>
+
+              <div
+                onClick={() =>
+                  leaderboardSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+                }
+                className="shrink-0 cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] border border-[#FFE600]/35 text-amber-100 text-[10px] sm:text-[11px] font-extrabold hover:border-[#FFE600] transition"
+                title="Total Live Votes"
+              >
+                <Flame className="w-3 h-3 text-orange-400" />
+                <span>{totalVotes}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  categoriesSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+                }
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/40 text-amber-100 text-[10px] sm:text-[11px] font-extrabold transition"
+              >
+                <Compass className="w-3 h-3 text-[#FFE600]" />
+                <span>Browse Clans</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowUserGuideModal(true)}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/40 text-amber-100 text-[10px] sm:text-[11px] font-extrabold transition"
+              >
+                <HelpCircle className="w-3 h-3 text-[#FFE600]" />
+                <span>Manual</span>
+              </button>
 
               <button
                 type="button"
@@ -1247,11 +1297,16 @@ export default function PatakhaArenaClient() {
                   if (isBattleMode) {
                     setIsBattleMode(false);
                     if (typeof window !== "undefined") {
-                      window.history.pushState({}, "", window.location.pathname);
+                      window.history.pushState(
+                        {},
+                        "",
+                        window.location.pathname
+                      );
                     }
                   } else {
                     const fA =
                       effectiveMyHandle ||
+                      featuredProfile?.handle ||
                       profiles[0]?.handle ||
                       "pragmaticengineer";
                     const fB =
@@ -1269,127 +1324,30 @@ export default function PatakhaArenaClient() {
                     );
                   }
                 }}
-                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider border transition ${
-                  isBattleMode
-                    ? "bg-[#FFE600] text-[#380828] border-white shadow"
-                    : "bg-[#15020F]/90 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border-[#FFE600]/60"
-                }`}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFE600] hover:bg-amber-300 text-[#380828] text-[10px] sm:text-[11px] font-black shadow transition"
               >
                 <Swords className="w-3 h-3" />
                 <span>
                   {isBattleMode
-                    ? "Exit 1v1 Battle"
+                    ? "Exit Battle"
                     : myActiveBattlesCount > 0
-                    ? `1v1 Battles (${myActiveBattlesCount} Active)`
-                    : "⚔️ 1v1 Battle"}
+                    ? `1v1 Battle (${myActiveBattlesCount})`
+                    : "1v1 Battle"}
                 </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowUserGuideModal(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] border border-[#FFE600]/50 text-[10px] sm:text-xs font-black uppercase tracking-wider transition"
-              >
-                <HelpCircle className="w-3 h-3" />
-                <span>How It Works</span>
-              </button>
-            </div>
-
-            <h1 className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight leading-none">
-              <span className="gold-shimmer drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]">
-                RATE MY PATAKHA
-              </span>
-            </h1>
-
-            <p className="text-xs sm:text-sm text-amber-100/95 max-w-xl mx-auto font-semibold mt-1.5 leading-snug">
-              Generate your{" "}
-              <span className="text-[#FFE600] font-extrabold">
-                Cracker Card
-              </span>
-              , frame your{" "}
-              <span className="text-[#FFE600] font-extrabold">
-                Photo or Rangoli
-              </span>
-              , or challenge friends in a{" "}
-              <span className="text-[#FFE600] font-extrabold">
-                Live 1v1 Battle
-              </span>
-              !{" "}
-              <span className="text-emerald-300 font-extrabold">
-                (Upvote 3 others = +1 Bonus Vote for you!)
-              </span>
-            </p>
-
-            {/* Compact 4-Stat Pill Bar */}
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5">
-              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
-                <Zap className="w-3.5 h-3.5 text-[#FFE600]" />
-                <span className="text-xs font-black text-white">
-                  {clans.length || 7}
-                </span>
-                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
-                  Clans
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
-                <Users className="w-3.5 h-3.5 text-amber-300" />
-                <span className="text-xs font-black text-white">
-                  {totalCreators}
-                </span>
-                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
-                  Users
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
-                <Flame className="w-3.5 h-3.5 text-orange-400" />
-                <span className="text-xs font-black text-[#FFE600]">
-                  {totalVotes}
-                </span>
-                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
-                  Live Votes
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  categoriesSectionRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                  })
-                }
-                className="flex items-center gap-1 bg-[#1B0312]/90 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/45 px-2.5 py-1 rounded-xl text-xs font-black transition"
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>Browse Clans ↓</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  leaderboardSectionRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                  })
-                }
-                className="flex items-center gap-1 bg-[#FFE600] hover:bg-amber-300 text-[#380828] px-2.5 py-1 rounded-xl text-xs font-black transition shadow"
-              >
-                <Trophy className="w-3.5 h-3.5" />
-                <span>Leaderboard ↓</span>
               </button>
             </div>
           </div>
         </header>
 
-        {/* Live Arena Activity Ticker */}
+        {/* SLIM ONE-LINER LIVE ARENA ACTIVITY TICKER */}
         {recentEvents.length > 0 && (
-          <div className="max-w-4xl mx-auto space-y-2">
-            <div className="bg-[#180210]/90 border border-[#FFE600]/35 rounded-2xl px-3.5 py-2 flex items-center gap-2.5 overflow-x-auto no-scrollbar">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider shrink-0">
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-[#180210]/90 border border-[#FFE600]/35 rounded-full px-3.5 py-1 flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] sm:text-[11px] font-black uppercase tracking-wider shrink-0">
                 <Activity className="w-3 h-3 animate-pulse" />
-                Live Feed
+                <span className="text-[#FFE600]">LIVE ARENA:</span>
               </span>
-              <div className="flex items-center gap-4 text-xs font-bold text-amber-100/90 whitespace-nowrap">
+              <div className="flex items-center gap-3.5 text-[11px] sm:text-xs font-bold text-amber-100/90 whitespace-nowrap">
                 {recentEvents.slice(0, 7).map((ev) => (
                   <button
                     key={ev.id}
@@ -1400,7 +1358,7 @@ export default function PatakhaArenaClient() {
                           ev.handle,
                           ev.rivalHandle,
                           ev.battleHours || 12,
-                           undefined,
+                          undefined,
                           profiles,
                           true,
                           false
@@ -1415,14 +1373,14 @@ export default function PatakhaArenaClient() {
                     }}
                     className="inline-flex items-center gap-1 hover:text-[#FFE600] transition"
                   >
-                    <span>{ev.patakhaEmoji}</span>
+                    <span>{ev.type === "vote" ? "🔥" : ev.patakhaEmoji}</span>
                     {ev.type === "battle" && ev.rivalHandle ? (
                       <>
                         <span className="font-black text-[#FFE600]">
                           @{ev.handle} vs @{ev.rivalHandle}
                         </span>
                         <span className="text-rose-300">
-                          started a {ev.battleHours || 12}h 1v1 Battle!
+                          ({ev.battleHours || 12}h battle)
                         </span>
                       </>
                     ) : (
@@ -1430,9 +1388,9 @@ export default function PatakhaArenaClient() {
                         <span className="font-black text-white">
                           @{ev.handle}
                         </span>
-                        <span className="text-amber-200/70">
+                        <span className="text-amber-200/75">
                           {ev.type === "vote"
-                            ? `reached ${ev.votes} votes`
+                            ? `upvoted (${ev.votes})`
                             : `joined ${ev.patakhaName}`}
                         </span>
                       </>
@@ -1443,40 +1401,6 @@ export default function PatakhaArenaClient() {
             </div>
           </div>
         )}
-
-        {/* MY ACTIVE 1v1 BATTLES & LIVE COUNTDOWN COMMAND CENTER */}
-        <MyActiveBattlesPanel
-          currentHandle={effectiveMyHandle}
-          activeBattles={activeBattles}
-          allProfiles={profiles}
-          activeBattlePair={battleHandles}
-          isBattleMode={isBattleMode}
-          onSelectBattle={(handleA, handleB, hrs, sMs) =>
-            startHeadToHeadBattle(
-              handleA,
-              handleB,
-              hrs,
-              sMs,
-              profiles,
-              true,
-              false
-            )
-          }
-          onVote={handleVote}
-          votedHandles={votedHandles}
-          votingHandle={votingHandle}
-          onStartNewBattleWithRival={(me, rival) =>
-            startHeadToHeadBattle(
-              me,
-              rival,
-              battleHours,
-              Date.now(),
-              profiles,
-              true,
-              true
-            )
-          }
-        />
 
         {/* CONDITIONAL HERO AREA:
             1) 1v1 HEAD-TO-HEAD RIVALRY BATTLE MODE (`/?vs=user1,user2&hours=12`)
@@ -1533,33 +1457,32 @@ export default function PatakhaArenaClient() {
           />
         ) : (
           <>
-            {/* Mode Switcher Tabs */}
-            <div className="max-w-xl mx-auto">
-              <div className="grid grid-cols-3 gap-1.5 bg-[#220416]/95 p-1.5 rounded-2xl border-2 border-[#FFE600]/80 shadow-xl">
+            {/* SLIM SINGLE-LINE 4-TAB STUDIO SWITCHER */}
+            <div className="max-w-3xl mx-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[#220416]/95 p-1 rounded-2xl border border-[#FFE600]/65 shadow-lg">
                 <button
                   type="button"
                   onClick={() => setActiveStudioTab("patakha-card")}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap transition-all ${
                     activeStudioTab === "patakha-card"
-                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow-md"
+                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
                       : "text-amber-100 hover:bg-white/10"
                   }`}
                 >
-                  <Sparkles className="w-4 h-4 shrink-0" />
                   <span>🧨 Cracker Card</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setActiveStudioTab("snap-frame")}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm transition-all ${
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap transition-all ${
                     activeStudioTab === "snap-frame"
-                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow-md"
+                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
                       : "text-amber-100 hover:bg-white/10"
                   }`}
                 >
-                  <Camera className="w-4 h-4 shrink-0" />
-                  <span>📷 Photo Frame</span>
+                  <Camera className="w-3.5 h-3.5 shrink-0" />
+                  <span>Photo / Rangoli Frame</span>
                 </button>
 
                 <button
@@ -1567,6 +1490,7 @@ export default function PatakhaArenaClient() {
                   onClick={() => {
                     const fA =
                       effectiveMyHandle ||
+                      featuredProfile?.handle ||
                       profiles[0]?.handle ||
                       "pragmaticengineer";
                     const fB =
@@ -1583,111 +1507,120 @@ export default function PatakhaArenaClient() {
                       false
                     );
                   }}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm text-amber-100 hover:bg-[#FFE600] hover:text-[#380828] transition-all"
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap text-amber-100 hover:bg-[#FFE600] hover:text-[#380828] transition-all"
                 >
-                  <Swords className="w-4 h-4 shrink-0" />
-                  <span>
-                    ⚔️ 1v1 Battle
-                    {myActiveBattlesCount > 0
-                      ? ` (${myActiveBattlesCount})`
-                      : ""}
-                  </span>
+                  <Swords className="w-3.5 h-3.5 shrink-0 text-[#FFE600]" />
+                  <span>1v1 Battle</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    categoriesSectionRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                    })
+                  }
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap text-amber-100 hover:bg-white/10 transition-all"
+                >
+                  <Compass className="w-3.5 h-3.5 shrink-0 text-[#FFE600]" />
+                  <span>Browse Clans</span>
                 </button>
               </div>
             </div>
 
             {activeStudioTab === "patakha-card" ? (
-              <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
-                {/* Input Form Column */}
-                <div className="lg:col-span-6 bg-[#2B061E]/92 border-2 border-[#FFE600] rounded-3xl p-4 sm:p-7 shadow-2xl backdrop-blur-md space-y-4">
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#FFE600]">
-                      <Flame className="w-4 h-4 text-orange-400" />
-                      Step 1: Enter Your Username or Profile Link
-                    </div>
-                    <h2 className="text-xl sm:text-2xl font-black text-white">
-                      Which Diwali Patakha Are You?
+              <section className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start pt-0.5">
+                {/* Left Input Form Column */}
+                <div className="lg:col-span-6 bg-[#240417]/95 border border-[#FFE600]/75 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFE600] text-[#380828] text-[10px] sm:text-[11px] font-black uppercase tracking-wider shadow">
+                      <Sparkles className="w-3 h-3 fill-current" />
+                      Diwali Cracker Card Studio
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveStudioTab("snap-frame")}
+                      className="text-xs font-extrabold text-[#FFE600] hover:underline inline-flex items-center gap-1"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Upload Photo / Rangoli →</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight">
+                      Get Your{" "}
+                      <span className="text-[#FFE600]">Cracker Card</span> &amp;
+                      Shareable Voting Link
                     </h2>
-                    <p className="text-xs sm:text-sm text-amber-100/80">
-                      Type your{" "}
-                      <strong className="text-[#FFE600]">@username</strong> to
-                      generate your Cracker Card, or load your existing card &
-                      live rank if you already registered!
+                    <p className="text-xs sm:text-sm text-amber-100/85 leading-relaxed">
+                      Enter your username or paste your profile URL. Download
+                      your card unlimited times, browse other users&apos;{" "}
+                      <strong className="text-[#FFE600]">Patakha Clans</strong>,
+                      or tag a friend in a{" "}
+                      <strong className="text-[#FFE600]">
+                        custom-hour 1v1 Battle
+                      </strong>
+                      !
                     </p>
                   </div>
 
-                  <form onSubmit={handleAnalyzeSubmit} className="space-y-3">
+                  <form onSubmit={handleAnalyzeSubmit} className="space-y-2.5">
                     <div className="relative">
-                      <Search className="w-5 h-5 text-[#FFE600] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-4 h-4 text-[#FFE600] absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={urlOrHandle}
                         onChange={(e) => setUrlOrHandle(e.target.value)}
-                        placeholder="Enter @username or substack.com/@username"
-                        className="w-full pl-11 pr-3.5 py-3.5 rounded-2xl bg-[#16020F] border-2 border-[#FFE600]/60 text-white placeholder:text-amber-200/45 focus:outline-none focus:border-[#FFE600] font-bold text-sm"
+                        placeholder="Type @username or paste profile URL..."
+                        className="w-full pl-10 pr-4 py-3 rounded-2xl bg-[#14020C] border border-[#FFE600]/55 text-white placeholder:text-amber-200/45 font-bold text-sm focus:outline-none focus:border-[#FFE600]"
                       />
                     </div>
 
-                    {/* REAL-TIME DB EXISTING USER DETECTOR BANNER */}
                     {existingUserMatch && (
-                      <div className="bg-emerald-950/90 border-2 border-emerald-400 rounded-2xl p-3 flex items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={existingUserMatch.patakhaImageUrl}
-                            alt={existingUserMatch.patakhaName}
-                            className="w-10 h-10 rounded-xl object-cover border border-[#FFE600] bg-[#FFF6E3] shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-black uppercase text-emerald-300 flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                              Already Registered in Arena!
-                            </div>
-                            <div className="text-xs font-extrabold text-white truncate">
-                              @{existingUserMatch.handle} •{" "}
-                              {existingUserMatch.patakhaName} (Rank #
-                              {existingUserMatch.clanRank} • 🔥{" "}
-                              {existingUserMatch.votes})
-                            </div>
-                          </div>
+                      <div className="bg-emerald-950/90 border border-emerald-400/60 rounded-2xl p-2.5 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="text-emerald-200 font-bold truncate">
+                            Found <strong>@{existingUserMatch.handle}</strong>:{" "}
+                            {existingUserMatch.patakhaEmoji}{" "}
+                            {existingUserMatch.patakhaName} (Rank #
+                            {existingUserMatch.clanRank})
+                          </span>
                         </div>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black shrink-0">
+                          🔥 {existingUserMatch.votes}
+                        </span>
+                      </div>
+                    )}
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleInspectProfileFromLeaderboard(
-                              existingUserMatch
-                            )
-                          }
-                          className="shrink-0 px-3 py-1.5 rounded-xl bg-[#FFE600] text-[#380828] font-black text-xs shadow"
-                        >
-                          Vote Page →
-                        </button>
+                    {errorMsg && (
+                      <div className="p-2.5 rounded-xl bg-red-950/90 border border-red-400 text-red-200 text-xs font-bold">
+                        {errorMsg}
                       </div>
                     )}
 
                     <button
                       type="submit"
                       disabled={isAnalyzing}
-                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] hover:brightness-110 text-[#380828] font-black text-sm sm:text-base border-2 border-[#4A1238] shadow-xl transition active:scale-[0.99] disabled:opacity-50"
+                      className="w-full py-3 px-5 rounded-2xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] hover:brightness-110 text-[#380828] font-black text-sm sm:text-base border border-[#4A1238] shadow-xl flex items-center justify-center gap-2 active:scale-[0.99] transition disabled:opacity-50"
                     >
-                      {isAnalyzing
-                        ? "Checking Arena & Generating..."
-                        : existingUserMatch
-                        ? `Load @${existingUserMatch.handle}'s Registered Card (${existingUserMatch.patakhaName}) 💥`
-                        : "Generate My Cracker Card 💥"}
+                      <Zap className="w-4 h-4 fill-[#380828]" />
+                      <span>
+                        {isAnalyzing
+                          ? "Igniting Your Cracker Card..."
+                          : existingUserMatch
+                          ? `Load @${existingUserMatch.handle}'s Registered Card`
+                          : "Generate My Cracker Card"}
+                      </span>
                     </button>
                   </form>
 
-                  {errorMsg && (
-                    <div className="p-3 rounded-xl bg-red-950/90 border border-red-400 text-red-100 text-xs font-bold">
-                      {errorMsg}
-                    </div>
-                  )}
-
-                  {/* Quick Sample Profiles */}
-                  <div className="pt-2 border-t border-[#FFE600]/25 space-y-2">
-                    <div className="text-[11px] font-extrabold uppercase tracking-wider text-amber-200/80">
-                      Or tap a sample creator to test instant lookup:
+                  {/* Quick Sample User Chips */}
+                  <div className="pt-0.5 space-y-1.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-amber-200/75">
+                      Or test with a popular creator:
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {QUICK_SAMPLE_USERS.map((sample) => (
@@ -1695,10 +1628,10 @@ export default function PatakhaArenaClient() {
                           key={sample}
                           type="button"
                           onClick={() => {
-                            setUrlOrHandle(`@${sample}`);
+                            setUrlOrHandle(sample);
                             submitUsernameOrUrl(sample);
                           }}
-                          className="text-xs px-2.5 py-1.5 rounded-xl bg-[#1A0311] hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] border border-[#FFE600]/40 font-extrabold transition"
+                          className="text-xs px-2.5 py-1 rounded-xl bg-[#16020F] hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] border border-[#FFE600]/40 font-extrabold transition"
                         >
                           @{sample}
                         </button>
@@ -1707,114 +1640,88 @@ export default function PatakhaArenaClient() {
                   </div>
 
                   {/* Upvote 3 Others = +1 Self Bonus Progress Box */}
-                  <div className="pt-3 border-t border-[#FFE600]/25">
-                    <div className="bg-gradient-to-r from-[#380828] via-[#4B0E36] to-[#380828] border-2 border-[#FFE600]/75 rounded-2xl p-3.5 space-y-2 shadow-lg">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-[#FFE600] flex items-center gap-1.5">
-                          <Gift className="w-4 h-4 text-emerald-400" />
-                          <span>
-                            Three Votes to Others = +1 Bonus Vote for You!
-                          </span>
+                  <div className="pt-2 border-t border-white/10">
+                    <div className="bg-[#16020F]/90 border border-[#FFE600]/40 rounded-2xl p-2.5 space-y-1">
+                      <div className="flex items-center justify-between text-xs font-black text-[#FFE600]">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Gift className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>3 Votes to Others = +1 Bonus Vote for You</span>
                         </span>
-                        <span className="px-2 py-0.5 rounded-lg bg-[#14020E] border border-[#FFE600]/50 text-[#FFE600] text-xs font-black">
-                          {progressInCycle}/3
+                        <span className="text-emerald-300">
+                          {progressInCycle}/3 Upvotes
                         </span>
                       </div>
-                      <p className="text-xs text-amber-100/90 leading-relaxed">
-                        Every time you upvote <strong>3 other users</strong> on
-                        the Leaderboard or in 1v1 Battles, your own score (
-                        <strong className="text-emerald-300">
-                          @{effectiveMyHandle || "yourhandle"}
-                        </strong>
-                        ) automatically increases by{" "}
-                        <strong className="text-[#FFE600]">+1 vote</strong> in
-                        real time! ({votesNeededForNextBonus} more{" "}
-                        {votesNeededForNextBonus === 1 ? "upvote" : "upvotes"}{" "}
-                        for your next +1 bonus)
+                      <p className="text-[11px] text-amber-100/85 leading-relaxed">
+                        Upvote <strong>{votesNeededForNextBonus} more</strong>{" "}
+                        {votesNeededForNextBonus === 1 ? "user" : "users"} on
+                        the Leaderboard below to automatically add{" "}
+                        <strong className="text-[#FFE600]">
+                          +1 Bonus Vote
+                        </strong>{" "}
+                        to{" "}
+                        {effectiveMyHandle ? (
+                          <strong className="text-emerald-300">
+                            @{effectiveMyHandle}
+                          </strong>
+                        ) : (
+                          "your card"
+                        )}
+                        !
                       </p>
                     </div>
                   </div>
-
-                  {/* Secondary CTA to Frame Photo or Start 1v1 Battle */}
-                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveStudioTab("snap-frame")}
-                      className="w-full py-2.5 px-3 rounded-2xl bg-[#1A0312] hover:bg-[#340724] border border-[#FFE600]/60 text-[#FFE600] font-black text-xs flex items-center justify-center gap-1.5 transition"
-                    >
-                      <Camera className="w-4 h-4" />
-                      <span>Frame Photo / Rangoli →</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const fA =
-                          effectiveMyHandle ||
-                          profiles[0]?.handle ||
-                          "pragmaticengineer";
-                        const fB =
-                          profiles.find(
-                            (p) => p.handle.toLowerCase() !== fA.toLowerCase()
-                          )?.handle || "aarav";
-                        startHeadToHeadBattle(
-                          fA,
-                          fB,
-                          battleHours,
-                          Date.now(),
-                          profiles,
-                          true,
-                          true
-                        );
-                      }}
-                      className="w-full py-2.5 px-3 rounded-2xl bg-[#1A0312] hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/60 font-black text-xs flex items-center justify-center gap-1.5 transition"
-                    >
-                      <Swords className="w-4 h-4" />
-                      <span>Challenge Rival (1v1) →</span>
-                    </button>
-                  </div>
                 </div>
 
-                {/* Output Collectible Patakha Card Column */}
+                {/* Right Output Cracker Card Column with Slim Top Status Pill */}
                 <div
                   ref={cardSectionRef}
                   className="lg:col-span-6 flex flex-col items-center space-y-2"
                 >
                   {featuredProfile && (
-                    <div className="w-full max-w-[420px] flex items-center justify-between px-3 py-1.5 rounded-xl bg-[#1B0312]/90 border border-[#FFE600]/40 text-xs">
-                      <span className="font-extrabold text-amber-100 flex items-center gap-1.5 truncate">
-                        {lastLoadedWasExisting ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span>
-                              Registered Card for{" "}
-                              <strong className="text-[#FFE600]">
-                                @{featuredProfile.handle}
-                              </strong>
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <PlusCircle className="w-4 h-4 text-[#FFE600] shrink-0" />
-                            <span>
-                              Live Card for{" "}
-                              <strong className="text-[#FFE600]">
-                                @{featuredProfile.handle}
-                              </strong>
-                            </span>
-                          </>
-                        )}
+                    <div className="w-full max-w-[420px] bg-emerald-950/90 border border-emerald-400/50 rounded-full px-3.5 py-1 flex items-center justify-between gap-2 text-xs text-emerald-200 font-bold shadow">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate">
+                          {lastLoadedWasExisting
+                            ? `Loaded @${featuredProfile.handle}`
+                            : `Active Card for @${featuredProfile.handle}`}
+                        </span>
                       </span>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleInspectProfileFromLeaderboard(featuredProfile)
-                        }
-                        className="text-[#FFE600] font-black underline shrink-0 ml-2"
-                      >
-                        Open Vote View →
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const rival =
+                              profiles.find(
+                                (p) =>
+                                  p.handle.toLowerCase() !==
+                                  featuredProfile.handle.toLowerCase()
+                              )?.handle || "aarav";
+                            startHeadToHeadBattle(
+                              featuredProfile.handle,
+                              rival,
+                              battleHours,
+                              Date.now(),
+                              profiles,
+                              true,
+                              false
+                            );
+                          }}
+                          className="text-[#FFE600] hover:underline font-black"
+                        >
+                          1v1 Battle
+                        </button>
+                        <span className="text-emerald-400/60">•</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleInspectProfileFromLeaderboard(featuredProfile)
+                          }
+                          className="text-emerald-300 hover:underline font-black"
+                        >
+                          Voter Page →
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -1828,8 +1735,8 @@ export default function PatakhaArenaClient() {
                       isVoting={votingHandle === featuredProfile.handle}
                     />
                   ) : (
-                    <div className="w-full max-w-[420px] rounded-3xl border-2 border-dashed border-[#FFE600]/50 p-10 text-center text-amber-200/80 bg-[#240518]/85">
-                      Loading your Diwali Patakha Card...
+                    <div className="w-full max-w-[420px] h-96 rounded-3xl bg-black/40 border-2 border-dashed border-[#FFE600]/40 flex items-center justify-center text-amber-200/70 font-bold text-sm p-6 text-center">
+                      Enter your username to reveal your Diwali Cracker Card!
                     </div>
                   )}
                 </div>
@@ -1839,9 +1746,13 @@ export default function PatakhaArenaClient() {
                 clans={clans}
                 allProfiles={profiles}
                 activeProfile={featuredProfile}
-                onProfileSynced={(profile, snapshot) =>
-                  applyArenaSnapshot(profile, snapshot, true)
-                }
+                onProfileSynced={(profile, snapshot) => {
+                  if (profile?.handle) {
+                    setMyHandle(profile.handle);
+                    saveStoredMyHandle(profile.handle);
+                  }
+                  applyArenaSnapshot(profile, snapshot, true);
+                }}
                 onVote={handleVote}
                 hasVoted={
                   featuredProfile
@@ -1858,26 +1769,61 @@ export default function PatakhaArenaClient() {
           </>
         )}
 
-        {/* Clan Wars Matrix + Interactive Clan Member Roster Browser */}
-        <div ref={categoriesSectionRef}>
-          {clans.length > 0 && (
-            <ClanWarsMatrix
-              clans={clans}
-              profiles={profiles}
-              selectedPatakha={selectedPatakha}
-              onSelectPatakha={(id) => {
-                setSelectedPatakha(id);
-              }}
-              onInspectProfile={handleInspectProfileFromLeaderboard}
-              onStartBattleWithProfile={handleStartBattleWithProfile}
-              onVote={handleVote}
-              votedHandles={votedHandles}
-              votingHandle={votingHandle}
-            />
-          )}
+        {/* Patakha Clan Matrix + Interactive Clan Member Roster */}
+        <div
+          ref={categoriesSectionRef}
+          className="bg-[#28061C]/90 border-2 border-[#FFE600]/65 rounded-3xl p-3.5 sm:p-7 shadow-2xl backdrop-blur-md"
+        >
+          <ClanWarsMatrix
+            clans={clans}
+            profiles={profiles}
+            selectedPatakha={selectedPatakha}
+            onSelectPatakha={(id) => {
+              setSelectedPatakha(id);
+            }}
+            onInspectProfile={handleInspectProfileFromLeaderboard}
+            onStartBattleWithProfile={handleStartBattleWithProfile}
+            onVote={handleVote}
+            votedHandles={votedHandles}
+            votingHandle={votingHandle}
+          />
         </div>
 
-        {/* Full Live Community Voting Leaderboard */}
+        {/* LIVE 1v1 BATTLES SECTION (Placed right above the Leaderboard where users see all ranks!) */}
+        <MyActiveBattlesPanel
+          currentHandle={effectiveMyHandle}
+          activeBattles={activeBattles}
+          allProfiles={profiles}
+          activeBattlePair={battleHandles}
+          isBattleMode={isBattleMode}
+          onSelectBattle={(handleA, handleB, hrs, sMs) =>
+            startHeadToHeadBattle(
+              handleA,
+              handleB,
+              hrs,
+              sMs,
+              profiles,
+              true,
+              false
+            )
+          }
+          onVote={handleVote}
+          votedHandles={votedHandles}
+          votingHandle={votingHandle}
+          onStartNewBattleWithRival={(me, rival) =>
+            startHeadToHeadBattle(
+              me,
+              rival,
+              battleHours,
+              Date.now(),
+              profiles,
+              true,
+              true
+            )
+          }
+        />
+
+        {/* Live Community Leaderboard */}
         <div ref={leaderboardSectionRef}>
           <ArenaLeaderboard
             profiles={profiles}
@@ -1887,10 +1833,10 @@ export default function PatakhaArenaClient() {
             onVote={handleVote}
             onInspectProfile={handleInspectProfileFromLeaderboard}
             onStartBattleWithProfile={handleStartBattleWithProfile}
-            onJoinActiveBattle={(handleA, handleB, hrs) =>
+            onJoinActiveBattle={(a, b, hrs) =>
               startHeadToHeadBattle(
-                handleA,
-                handleB,
+                a,
+                b,
                 hrs || 12,
                 undefined,
                 profiles,
@@ -1905,71 +1851,80 @@ export default function PatakhaArenaClient() {
           />
         </div>
 
-        {/* 1-WEEK GRAND FINALE ANNOUNCEMENT BANNER */}
-        <section className="bg-gradient-to-r from-[#3D082A] via-[#590D3B] to-[#3D082A] border-2 border-[#FFE600] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#FFE600] text-[#380828] text-[11px] font-black uppercase tracking-wider">
-              <Clock className="w-3.5 h-3.5" />
-              Grand Finale Schedule • Hourly +1 Auto-Vote Active
+        {/* 1-Week Grand Finale & Hourly Vote Rule Banner */}
+        <div className="bg-gradient-to-r from-[#3D0A2B]/95 via-[#26041A]/95 to-[#3D0A2B]/95 border-2 border-[#FFE600]/65 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#FFE600] text-[#380828] flex items-center justify-center shrink-0 shadow">
+              <Clock className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <h3 className="text-lg sm:text-2xl font-black text-white">
-              🏆 Overall #1 Diwali Patakha Leaderboard Winner Announced in 1
-              Week!
-            </h3>
-            <p className="text-xs sm:text-sm text-amber-100/90 max-w-2xl">
-              Every profile receives{" "}
-              <strong className="text-[#FFE600]">+1 vote every hour</strong>,
-              and upvoting <strong>3 other users</strong> gives your own score{" "}
-              <strong className="text-[#FFE600]">+1 Bonus Vote</strong>{" "}
-              instantly! 1v1 Battles crown their winner as soon as their custom
-              hour countdown finishes.
-            </p>
+            <div className="text-xs sm:text-sm">
+              <div className="font-black text-[#FFE600] uppercase tracking-wider">
+                🏆 Grand Leaderboard Finale in 1 Week + Hourly Auto-Vote Boost
+              </div>
+              <p className="text-amber-100/90 font-semibold mt-0.5">
+                Every registered profile automatically earns{" "}
+                <strong className="text-[#FFE600]">+1 vote every hour</strong>,
+                every{" "}
+                <strong className="text-[#FFE600]">
+                  3 upvotes you cast for others
+                </strong>{" "}
+                gives you{" "}
+                <strong className="text-emerald-300">+1 Bonus Vote</strong>, and
+                the Overall #1 Diwali Patakha Champion will be announced in{" "}
+                <strong className="text-[#FFE600]">1 Week</strong>!
+              </p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => setShowUserGuideModal(true)}
-            className="shrink-0 px-4 py-2.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black text-xs sm:text-sm inline-flex items-center gap-1.5 shadow-lg transition"
+            className="shrink-0 px-4 py-2 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black text-xs inline-flex items-center gap-1.5 shadow transition"
           >
-            <BookOpen className="w-4 h-4" />
-            <span>Read Simple Guide</span>
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Read Full Rules</span>
           </button>
-        </section>
+        </div>
 
-        {/* Footer with User Guide, Developer Audit Link, and GitHub Repo */}
-        <footer className="pt-4 pb-8 text-center space-y-3">
-          <div className="inline-flex flex-wrap items-center justify-center gap-2 bg-[#1D0313]/90 border border-[#FFE600]/40 px-4 py-2.5 rounded-2xl text-xs text-amber-200/90">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>
-              <strong>100% Privacy-First Photo Framing:</strong> Uploaded photos
-              are rendered in your browser and never stored on our servers.
-            </span>
+        {/* Footer with User Manual Button, GitHub Repo & Developer Audit Link */}
+        <footer className="bg-[#1C0313]/95 border-2 border-[#FFE600]/45 rounded-3xl p-4 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2.5 text-center sm:text-left">
+            <span className="text-lg">🧨</span>
+            <div>
+              <div className="font-black text-white text-sm">
+                Rate My Patakha — Diwali Cracker Card, Frame Studio & 1v1
+                Battles
+              </div>
+              <div className="text-amber-200/75 font-semibold">
+                Real-time Leaderboard • 1–48 Hour 1v1 Rivalry Battles •
+                Handcrafted Festive Frames
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-amber-200/75 font-semibold">
-            <span>Rate My Patakha 🧨</span>
-            <span>•</span>
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={() => setShowUserGuideModal(true)}
-              className="text-[#FFE600] hover:underline font-extrabold"
+              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-[#FFE600]/40 text-[#FFE600] font-black inline-flex items-center gap-1.5 transition"
             >
-              User Guide
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>User Guide</span>
             </button>
-            <span>•</span>
+
             <a
               href="/audit"
-              className="text-emerald-300 hover:underline font-extrabold inline-flex items-center gap-1"
+              className="px-3 py-2 rounded-xl bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-400/50 text-emerald-300 font-black inline-flex items-center gap-1.5 transition"
             >
-              <Activity className="w-3.5 h-3.5" />
+              <Code2 className="w-3.5 h-3.5" />
               <span>System Audit (/audit)</span>
             </a>
-            <span>•</span>
+
             <a
               href="https://github.com/SavantCode/rateMyPatakha"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-amber-100 hover:text-[#FFE600] hover:underline font-extrabold inline-flex items-center gap-1"
+              className="px-3.5 py-2 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black inline-flex items-center gap-1.5 shadow transition"
             >
               <Github className="w-3.5 h-3.5" />
               <span>GitHub</span>

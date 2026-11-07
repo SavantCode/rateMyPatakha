@@ -24,15 +24,13 @@ export async function POST(request: Request) {
     const rawHandle = typeof body?.handle === "string" ? body.handle : "";
     const handle = sanitizeHandle(rawHandle);
     const clientVoterId =
-      typeof body?.voterId === "string" ? body.voterId.trim().slice(0, 64) : "";
+      typeof body?.voterId === "string"
+        ? body.voterId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
+        : "";
     const voterHandle =
       typeof body?.voterHandle === "string"
         ? sanitizeHandle(body.voterHandle)
         : "";
-    const othersVotedCount =
-      typeof body?.othersVotedCount === "number"
-        ? Math.max(0, Math.floor(body.othersVotedCount))
-        : undefined;
 
     if (!handle) {
       return NextResponse.json(
@@ -48,12 +46,7 @@ export async function POST(request: Request) {
       .digest("hex")
       .slice(0, 24);
 
-    const result = await voteForProfile(
-      handle,
-      ipUaFingerprint,
-      voterHandle,
-      othersVotedCount
-    );
+    const result = await voteForProfile(handle, ipUaFingerprint, voterHandle);
     if (!result.profile) {
       recordApiTelemetry("/api/vote", Date.now() - start, false);
       return NextResponse.json(

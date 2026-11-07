@@ -1,23 +1,19 @@
 # Changelog — Rate My Patakha 🧨
 
-## [3.3.0] - Multi-Battle Command Center, DB-Persisted 1v1 Battles, Live Frame Canvas Text & System Design Polling Engine
+## [3.8.0] - Final Production Security Audit & Vercel Hosting Readiness
 - **What Changed**:
-  1. **Current User Multi-Battle Command Center (`src/components/MyActiveBattlesPanel.tsx`, `src/components/PatakhaArenaClient.tsx`)**:
-     - Added a dedicated, responsive **Live 1v1 Battle Command Center** that detects all active battles the current user (`@myHandle`) is playing (`Playing N Battles`).
-     - Shows summary badges (`🏆 Winning`, `⚡ Trailing`, `🤝 Tied`), each rival's `@username` & Patakha Clan, each battle's live ticking `HHh MMm SSs` countdown, a live tug-of-war vote bar, and 1-click buttons to **Vote** or **Open 1v1**.
-  2. **Database-Persisted 1v1 Battles & Fixed Battle Hours Countdown (`src/lib/store.ts`, `src/app/api/battle/route.ts`, `src/components/HeadToHeadBattle.tsx`)**:
-     - Persisted 1v1 Battles in MongoDB (`battles` collection) & memory (`ArenaBattle`) with `{ id, handleA, handleB, hours, startMs, endMs }`.
-     - Fixed the bug in `HeadToHeadBattle.tsx` where changing Battle Hours (e.g., to `13h`) for an existing pair did not update the countdown timer.
-     - Added `"⚔️ In 1v1 vs @rival"` badges directly on Leaderboard rows so any visitor can jump into ongoing battles.
-  3. **100% Live Text & Vote Rendering on Photo / Rangoli Frame Canvas (`src/components/DiwaliSnapFrameStudio.tsx`)**:
-     - Subscribed `DiwaliSnapFrameStudio` to the live-polled `allProfiles` list and added a **Live Frame Text Editor** bar directly above the canvas so `@username`, `Greeting Title`, `RANK #X`, and `X VOTES` update live on the canvas image on every keystroke and every incoming upvote.
-  4. **Universal System Design Live Polling Engine (`src/app/api/leaderboard/route.ts`, `src/components/PatakhaArenaClient.tsx`)**:
-     - **HTTP Conditional GET (`ETag` + `If-None-Match` → `304 Not Modified`)**: Eliminates redundant JSON payloads when arena state hasn't changed.
-     - **Single-Flight Request Coalescing (`inflightPollRef`)**: Prevents overlapping network requests on slow connections.
-     - **Page Visibility API + Exponential Backoff with Random Jitter**: Polls every `3s + 0..450ms jitter` when visible, pauses when the tab is hidden, and immediately syncs on tab focus.
-     - **Cross-Tab `BroadcastChannel` Sync**: Broadcasts state mutations across all open browser tabs in `0ms`.
+  1. **Eliminated Client-Side Bonus Vote Manipulation (`src/lib/store.ts` & `src/app/api/vote/route.ts`)**:
+     - Removed `clientOthersVotedCount` from the server-side `voteForProfile()` calculation and switched to atomic MongoDB `$inc: { count: 1 }` on `voter_progress` keyed by the server-enforced SHA-256 voter fingerprint so clients cannot forge `othersVotedCount: 3` in API payloads to farm `+1` self-bonus votes.
+  2. **Secured Cron Endpoint (`src/app/api/cron/hourly-votes/route.ts`)**:
+     - Added optional `CRON_SECRET` Bearer token verification and IP rate limiting (`checkRateLimit`) so `/api/cron/hourly-votes` cannot be spammed publicly.
+  3. **Server-Authoritative Battle Timestamps (`src/lib/store.ts`)**:
+     - Hardened `startOrSyncArenaBattle()` so newly created or restarted 1v1 battles always use the server's `Date.now()` timestamp rather than trusting client-supplied `startMs`.
+  4. **Production Security Headers & Image Host Whitelisting (`next.config.mjs`)**:
+     - Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, disabled `X-Powered-By`, and restricted `images.remotePatterns` to Substack domains.
 
-## [3.2.0] - Live Real-Time Vote Synchronization, "Upvote 3 Others = +1 Self Bonus" Engine & Simplified User Guide
+## [3.7.0] - Top-Layer Fairy Lights on Scroll (`z-40`) & Mobile Hanging Lamps (Akash Kandils)
 - **What Changed**:
-  1. **"Upvote 3 Other Users = +1 Bonus Vote for Your Own Score" (`src/lib/store.ts`, `src/app/api/vote/route.ts`, `src/components/PatakhaArenaClient.tsx`, `src/components/ArenaLeaderboard.tsx`)**:
-     - Implemented real-time tracking of how many other profiles a user has upvoted (`othersVotedCount`) and automatic `+1` self-vote rewards on every 3rd upvote (`3, 6, 9, 12...`).
+  1. **Fairy Lights & Hanging Lamps Always on Top When Scrolling (`src/components/DiwaliDecorationLights.tsx`)**:
+     - Elevated `DiwaliDecorationLights` from `z-10` to `z-40 pointer-events-none` so all scrolling page content slides underneath the glowing fairy lights and swaying lamps instead of covering them.
+  2. **Visible Hanging Lamps on Mobile, Tablet & Desktop (`src/components/DiwaliDecorationLights.tsx`)**:
+     - Enabled the left and right swaying Akash Kandil lamps on all mobile, tablet, and desktop screen sizes.

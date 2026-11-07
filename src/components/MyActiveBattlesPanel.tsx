@@ -67,7 +67,27 @@ export default function MyActiveBattlesPanel({
   onStartNewBattleWithRival,
 }: Props) {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [tab, setTab] = useState<"my-battles" | "all-battles">("my-battles");
+  const cleanMe = currentHandle.trim().toLowerCase().replace(/^@+/, "");
+
+  // Battles where the current user is Challenger A or Challenger B
+  const myBattles = cleanMe
+    ? activeBattles.filter(
+        (b) =>
+          b.handleA.toLowerCase() === cleanMe ||
+          b.handleB.toLowerCase() === cleanMe
+      )
+    : [];
+
+  const [tab, setTab] = useState<"all-battles" | "my-battles">("all-battles");
+
+  // Automatically switch to "my-battles" once the user actually has an active battle
+  useEffect(() => {
+    if (myBattles.length > 0) {
+      setTab("my-battles");
+    } else {
+      setTab("all-battles");
+    }
+  }, [myBattles.length]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -75,15 +95,6 @@ export default function MyActiveBattlesPanel({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const cleanMe = currentHandle.trim().toLowerCase().replace(/^@+/, "");
-
-  // Battles where the current user is Challenger A or Challenger B
-  const myBattles = activeBattles.filter(
-    (b) =>
-      b.handleA.toLowerCase() === cleanMe ||
-      b.handleB.toLowerCase() === cleanMe
-  );
 
   // Summary metrics for current user
   let winningCount = 0;
@@ -115,27 +126,27 @@ export default function MyActiveBattlesPanel({
     ) || allProfiles.find((p) => p.handle.toLowerCase() !== cleanMe);
 
   const displayedBattles =
-    tab === "my-battles" && myBattles.length > 0 ? myBattles : activeBattles;
+    tab === "my-battles" ? myBattles : activeBattles;
 
   if (activeBattles.length === 0 && !cleanMe) {
     return null;
   }
 
   return (
-    <section className="bg-gradient-to-b from-[#29051C]/95 via-[#1E0314]/95 to-[#16020E]/95 border-2 border-[#FFE600]/80 rounded-3xl p-3.5 sm:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-md space-y-3.5">
-      {/* Top Header & Summary KPI Pills */}
+    <section className="bg-gradient-to-b from-[#29051C]/95 via-[#1E0314]/95 to-[#16020E]/95 border-2 border-[#FFE600]/75 rounded-3xl p-3.5 sm:p-5 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-md space-y-3.5">
+      {/* Clean Header & Summary KPI Pills */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-[#FFE600]/25">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#FFE600] text-[#380828] text-[11px] font-black uppercase tracking-wider shadow">
               <Swords className="w-3.5 h-3.5" />
-              Live 1v1 Battle Command Center
+              Live 1v1 Arena Battles
             </span>
 
-            {cleanMe && (
+            {cleanMe && myBattles.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/50 text-emerald-300 text-[11px] font-black">
                 <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-                @{cleanMe}: Playing {myBattles.length}{" "}
+                @{cleanMe}: {myBattles.length} Active{" "}
                 {myBattles.length === 1 ? "Battle" : "Battles"}
               </span>
             )}
@@ -159,21 +170,14 @@ export default function MyActiveBattlesPanel({
             )}
           </div>
 
-          <h3 className="text-sm sm:text-lg font-black text-white">
-            {cleanMe && myBattles.length > 0 ? (
+          <h3 className="text-base sm:text-xl font-black text-white">
+            {cleanMe && myBattles.length > 0 && tab === "my-battles" ? (
               <>
-                ⚔️ @{cleanMe} is in{" "}
-                <span className="text-[#FFE600]">
-                  {myBattles.length} Active 1v1{" "}
-                  {myBattles.length === 1 ? "Battle" : "Battles"}
-                </span>{" "}
-                — Track Live Countdowns & Lead Margin Below
+                ⚔️ Your Active 1v1 Matchups ({myBattles.length})
               </>
             ) : (
               <>
-                🔥 {activeBattles.length} Live 1v1{" "}
-                {activeBattles.length === 1 ? "Battle" : "Battles"} Happening
-                Right Now Across the Arena
+                ⚔️ Live Community 1v1 Battles ({activeBattles.length})
               </>
             )}
           </h3>
@@ -182,17 +186,6 @@ export default function MyActiveBattlesPanel({
         {/* Right Switcher Tabs + Start New Battle CTA */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <div className="inline-flex rounded-xl bg-[#12010B] p-1 border border-[#FFE600]/35">
-            <button
-              type="button"
-              onClick={() => setTab("my-battles")}
-              className={`px-3 py-1 rounded-lg text-xs font-black transition ${
-                tab === "my-battles"
-                  ? "bg-[#FFE600] text-[#380828] shadow"
-                  : "text-amber-200 hover:text-white"
-              }`}
-            >
-              My Battles ({myBattles.length})
-            </button>
             <button
               type="button"
               onClick={() => setTab("all-battles")}
@@ -204,18 +197,32 @@ export default function MyActiveBattlesPanel({
             >
               All Arena Battles ({activeBattles.length})
             </button>
+            <button
+              type="button"
+              onClick={() => setTab("my-battles")}
+              className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+                tab === "my-battles"
+                  ? "bg-[#FFE600] text-[#380828] shadow"
+                  : "text-amber-200 hover:text-white"
+              }`}
+            >
+              My Battles ({myBattles.length})
+            </button>
           </div>
 
-          {cleanMe && suggestedRival && (
+          {suggestedRival && (
             <button
               type="button"
               onClick={() =>
-                onStartNewBattleWithRival(cleanMe, suggestedRival.handle)
+                onStartNewBattleWithRival(
+                  cleanMe || "pragmaticengineer",
+                  suggestedRival.handle
+                )
               }
               className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] hover:brightness-110 text-[#380828] font-black text-xs inline-flex items-center gap-1 shadow active:scale-95 transition"
             >
               <PlusCircle className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Battle @{suggestedRival.handle}</span>
+              <span>Start 1v1 vs @{suggestedRival.handle}</span>
             </button>
           )}
         </div>
@@ -228,12 +235,14 @@ export default function MyActiveBattlesPanel({
             <div className="text-xs sm:text-sm font-black text-[#FFE600] flex items-center justify-center sm:justify-start gap-1.5">
               <Sparkles className="w-4 h-4" />
               <span>
-                @{cleanMe || "You"} aren&apos;t in an active 1v1 Battle yet!
+                {cleanMe
+                  ? `@${cleanMe} isn't in an active 1v1 Battle yet!`
+                  : "You haven't started a 1v1 Battle yet!"}
               </span>
             </div>
             <p className="text-xs text-amber-100/80">
-              Start a 1-to-48 hour 1v1 Battle against a friend or view all{" "}
-              {activeBattles.length} live Arena battles happening now.
+              Generate your card at the top or challenge any player from the
+              Leaderboard below to a custom-hour 1v1 Battle.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -249,7 +258,7 @@ export default function MyActiveBattlesPanel({
                 className="px-3.5 py-2 rounded-xl bg-[#FFE600] text-[#380828] font-black text-xs inline-flex items-center gap-1.5 shadow"
               >
                 <Swords className="w-3.5 h-3.5" />
-                <span>Start 1v1 vs @{suggestedRival.handle}</span>
+                <span>Challenge @{suggestedRival.handle}</span>
               </button>
             )}
             <button
@@ -257,7 +266,7 @@ export default function MyActiveBattlesPanel({
               onClick={() => setTab("all-battles")}
               className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-amber-100 font-bold text-xs"
             >
-              See All ({activeBattles.length})
+              See All Battles ({activeBattles.length})
             </button>
           </div>
         </div>
@@ -266,8 +275,9 @@ export default function MyActiveBattlesPanel({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {displayedBattles.slice(0, 6).map((b) => {
             const isMeInvolved =
-              b.handleA.toLowerCase() === cleanMe ||
-              b.handleB.toLowerCase() === cleanMe;
+              Boolean(cleanMe) &&
+              (b.handleA.toLowerCase() === cleanMe ||
+                b.handleB.toLowerCase() === cleanMe);
             const isMeA = b.handleA.toLowerCase() === cleanMe;
 
             const primaryFighter = isMeInvolved
