@@ -41,6 +41,7 @@ import {
   Download,
   Gift,
   Clock,
+  Trophy,
 } from "lucide-react";
 
 const QUICK_SAMPLE_USERS = [
@@ -53,6 +54,7 @@ const QUICK_SAMPLE_USERS = [
 ];
 
 type GuideTabId = "quickstart" | "battle-tagging" | "frames" | "finale";
+type MobileBottomTabId = "card" | "battle" | "ranks" | "guide";
 
 const BROADCAST_CHANNEL_NAME = "patakha_arena_live_channel_v1";
 
@@ -155,6 +157,8 @@ export default function PatakhaArenaClient() {
   const [showUserGuideModal, setShowUserGuideModal] = useState(false);
   const [activeGuideTab, setActiveGuideTab] =
     useState<GuideTabId>("quickstart");
+  const [mobileBottomTab, setMobileBottomTab] =
+    useState<MobileBottomTabId>("card");
 
   const [battleHandles, setBattleHandles] = useState<[string, string]>([
     "pragmaticengineer",
@@ -434,6 +438,7 @@ export default function PatakhaArenaClient() {
   const exitSpecialModesToStudio = () => {
     setIsPublicVoteMode(false);
     setIsBattleMode(false);
+    setMobileBottomTab("card");
     setUrlOrHandle("");
     setExistingUserMatch(null);
     if (typeof window !== "undefined") {
@@ -515,6 +520,7 @@ export default function PatakhaArenaClient() {
             setBattleStartMs(b.startMs);
             setIsPublicVoteMode(false);
             setIsBattleMode(true);
+            setMobileBottomTab("battle");
 
             if (typeof window !== "undefined") {
               const vsUrl = `${
@@ -546,6 +552,7 @@ export default function PatakhaArenaClient() {
       setBattleStartMs(resolvedStartMs);
       setIsPublicVoteMode(false);
       setIsBattleMode(true);
+      setMobileBottomTab("battle");
 
       if (shouldScroll) {
         topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -712,6 +719,7 @@ export default function PatakhaArenaClient() {
       if (!vs && !u) {
         setIsBattleMode(false);
         setIsPublicVoteMode(false);
+        setMobileBottomTab("card");
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -755,6 +763,7 @@ export default function PatakhaArenaClient() {
       setActiveStudioTab("patakha-card");
       setIsPublicVoteMode(false);
       setIsBattleMode(false);
+      setMobileBottomTab("card");
       triggerDiwaliConfetti();
 
       if (data.alreadyExists) {
@@ -874,6 +883,7 @@ export default function PatakhaArenaClient() {
     featuredProfileRef.current = profile;
     setIsBattleMode(false);
     setIsPublicVoteMode(true);
+    setMobileBottomTab("card");
     if (typeof window !== "undefined") {
       const nextUrl = `${window.location.pathname}?u=${encodeURIComponent(
         profile.handle
@@ -937,7 +947,7 @@ export default function PatakhaArenaClient() {
   const votesNeededForNextBonus = 3 - progressInCycle;
 
   return (
-    <div className="relative min-h-screen text-amber-50 pb-20 overflow-x-hidden">
+    <div className="relative min-h-screen text-amber-50 pb-28 sm:pb-20 overflow-x-hidden">
       <ClientErrorReporter />
 
       {/* Background Artwork Layer */}
@@ -961,9 +971,9 @@ export default function PatakhaArenaClient() {
       <DiwaliDecorationLights />
       <FireworkBackground />
 
-      {/* Floating Toast Notification */}
+      {/* Floating Toast Notification (Positioned above mobile bottom nav bar on phones) */}
       {toastMsg && (
-        <div className="fixed bottom-5 right-4 left-4 sm:left-auto z-50 max-w-md bg-[#2A061D] border-2 border-[#FFE600] text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-bounce">
+        <div className="fixed bottom-20 sm:bottom-5 right-4 left-4 sm:left-auto z-50 max-w-md bg-[#2A061D] border-2 border-[#FFE600] text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-bounce">
           <CheckCircle2 className="w-5 h-5 text-[#FFE600] shrink-0" />
           <span className="text-xs sm:text-sm font-extrabold">{toastMsg}</span>
         </div>
@@ -1296,6 +1306,7 @@ export default function PatakhaArenaClient() {
                 onClick={() => {
                   if (isBattleMode) {
                     setIsBattleMode(false);
+                    setMobileBottomTab("card");
                     if (typeof window !== "undefined") {
                       window.history.pushState(
                         {},
@@ -1438,11 +1449,12 @@ export default function PatakhaArenaClient() {
             hasVoted={votedHandles.has(featuredProfile.handle.toLowerCase())}
             isVoting={votingHandle === featuredProfile.handle}
             onSwitchToCreatorStudio={exitSpecialModesToStudio}
-            onScrollToLeaderboard={() =>
+            onScrollToLeaderboard={() => {
+              setMobileBottomTab("ranks");
               leaderboardSectionRef.current?.scrollIntoView({
                 behavior: "smooth",
-              })
-            }
+              });
+            }}
             onStartRivalryBattle={(a, b) =>
               startHeadToHeadBattle(
                 a,
@@ -1462,7 +1474,10 @@ export default function PatakhaArenaClient() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-[#220416]/95 p-1 rounded-2xl border border-[#FFE600]/65 shadow-lg">
                 <button
                   type="button"
-                  onClick={() => setActiveStudioTab("patakha-card")}
+                  onClick={() => {
+                    setActiveStudioTab("patakha-card");
+                    setMobileBottomTab("card");
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap transition-all ${
                     activeStudioTab === "patakha-card"
                       ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
@@ -1474,7 +1489,10 @@ export default function PatakhaArenaClient() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveStudioTab("snap-frame")}
+                  onClick={() => {
+                    setActiveStudioTab("snap-frame");
+                    setMobileBottomTab("card");
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl font-black text-xs whitespace-nowrap transition-all ${
                     activeStudioTab === "snap-frame"
                       ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
@@ -1926,12 +1944,120 @@ export default function PatakhaArenaClient() {
               rel="noopener noreferrer"
               className="px-3.5 py-2 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black inline-flex items-center gap-1.5 shadow transition"
             >
-              <Github className="w-3.5 h-3.5" />
+              <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
           </div>
         </footer>
       </div>
+
+      {/* INSTAGRAM-STYLE FIXED BOTTOM MOBILE NAVIGATION BAR (Only on Phones: Card, Battle, Ranks, Guide) */}
+      <nav
+        aria-label="Mobile Bottom Navigation"
+        className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-[#1B0211]/95 backdrop-blur-lg border-t-2 border-[#FFE600]/75 px-2 py-1.5 shadow-[0_-10px_30px_rgba(0,0,0,0.85)]"
+      >
+        <div className="grid grid-cols-4 gap-1 max-w-md mx-auto">
+          {/* 1. CARD TAB */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowUserGuideModal(false);
+              setIsBattleMode(false);
+              setIsPublicVoteMode(false);
+              setMobileBottomTab("card");
+              topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition active:scale-95 ${
+              mobileBottomTab === "card" &&
+              !isBattleMode &&
+              !showUserGuideModal
+                ? "bg-[#FFE600] text-[#380828] font-black shadow"
+                : "text-amber-100/85 hover:text-[#FFE600] font-extrabold"
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="text-[10px] leading-tight mt-0.5">Card</span>
+          </button>
+
+          {/* 2. BATTLE TAB */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowUserGuideModal(false);
+              setMobileBottomTab("battle");
+              const fA =
+                effectiveMyHandle ||
+                featuredProfile?.handle ||
+                profiles[0]?.handle ||
+                "pragmaticengineer";
+              const fB =
+                profiles.find(
+                  (p) => p.handle.toLowerCase() !== fA.toLowerCase()
+                )?.handle || "aarav";
+              startHeadToHeadBattle(
+                fA,
+                fB,
+                battleHours,
+                Date.now(),
+                profiles,
+                true,
+                false
+              );
+            }}
+            className={`relative flex flex-col items-center justify-center py-1.5 rounded-xl transition active:scale-95 ${
+              (mobileBottomTab === "battle" || isBattleMode) &&
+              !showUserGuideModal
+                ? "bg-[#FFE600] text-[#380828] font-black shadow"
+                : "text-amber-100/85 hover:text-[#FFE600] font-extrabold"
+            }`}
+          >
+            <Swords className="w-4 h-4" />
+            <span className="text-[10px] leading-tight mt-0.5">Battle</span>
+            {myActiveBattlesCount > 0 && (
+              <span className="absolute top-1 right-3 px-1 min-w-[14px] h-[14px] rounded-full bg-rose-600 border border-[#FFE600] text-white text-[9px] font-black flex items-center justify-center leading-none">
+                {myActiveBattlesCount}
+              </span>
+            )}
+          </button>
+
+          {/* 3. RANKS TAB */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowUserGuideModal(false);
+              setMobileBottomTab("ranks");
+              leaderboardSectionRef.current?.scrollIntoView({
+                behavior: "smooth",
+              });
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition active:scale-95 ${
+              mobileBottomTab === "ranks" && !showUserGuideModal
+                ? "bg-[#FFE600] text-[#380828] font-black shadow"
+                : "text-amber-100/85 hover:text-[#FFE600] font-extrabold"
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            <span className="text-[10px] leading-tight mt-0.5">Ranks</span>
+          </button>
+
+          {/* 4. GUIDE TAB */}
+          <button
+            type="button"
+            onClick={() => {
+              setMobileBottomTab("guide");
+              setShowUserGuideModal((prev) => !prev);
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition active:scale-95 ${
+              showUserGuideModal
+                ? "bg-[#FFE600] text-[#380828] font-black shadow"
+                : "text-amber-100/85 hover:text-[#FFE600] font-extrabold"
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span className="text-[10px] leading-tight mt-0.5">Guide</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

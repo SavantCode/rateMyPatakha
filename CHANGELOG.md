@@ -1,8 +1,11 @@
 # Changelog — Rate My Patakha 🧨
 
-## [3.8.3] - Remove Deprecated `downlevelIteration` from `tsconfig.json`
+## [3.9.0] - Instagram-Style Mobile Bottom Navigation Bar (`Card`, `Battle`, `Ranks`, `Guide`) & Clean `tsconfig.json`
 - **What Changed**:
-  1. **Removed Deprecated `"downlevelIteration"` Flag (`tsconfig.json`)**:
+  1. **Added Fixed Mobile Bottom Navigation Bar (`src/components/PatakhaArenaClient.tsx`)**:
+     - Added an Instagram-style thumb-friendly fixed bottom tab bar on mobile (`sm:hidden`) containing the 4 core navigation actions: **Card**, **Battle** (with live active-battle badge counter), **Ranks** (smooth scroll to the Leaderboard), and **Guide** (toggles the interactive User Guide modal).
+     - Adjusted mobile bottom page padding (`pb-28 sm:pb-20`) and floating toast position (`bottom-20 sm:bottom-5`) so content never hides behind the bottom navigation dock.
+  2. **Removed Deprecated `downlevelIteration` Flag (`tsconfig.json`)**:
      - Kept `"target": "ES2020"` which natively supports ES2015+ `Map`/`Set` iteration without triggering TypeScript's `Option 'downlevelIteration' is deprecated` warning.
 
 ## [3.8.2] - Fix Vercel Production TypeScript Build (`MapIterator` Target)
