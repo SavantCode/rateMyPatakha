@@ -1224,32 +1224,32 @@ export default function PatakhaArenaClient() {
         ref={topStudioRef}
         className="relative z-20 max-w-6xl mx-auto px-3 sm:px-6 pt-14 sm:pt-20 md:pt-24 space-y-3 sm:space-y-4"
       >
-        {/* SLIM ONE-LINER HORIZONTAL FESTIVAL HEADER BAR (Framed cleanly between the hanging lamps on mobile & desktop) */}
-        <header className="max-w-5xl mx-7 sm:mx-10 md:mx-auto">
-          <div className="bg-[#230417]/95 border border-[#FFE600]/65 rounded-2xl sm:rounded-full px-3 sm:px-4 py-1.5 sm:py-2 flex flex-col md:flex-row items-center justify-between gap-1.5 sm:gap-2 shadow-[0_10px_28px_rgba(0,0,0,0.75)] backdrop-blur-md">
-            {/* Left Brand Icon + Title + Subtitle */}
+        {/* PROMINENT FESTIVAL HEADER BAR (Framed cleanly between the hanging lamps on mobile & desktop) */}
+        <header className="max-w-5xl mx-6 sm:mx-12 md:mx-auto">
+          <div className="bg-gradient-to-r from-[#28051B]/95 via-[#340724]/95 to-[#28051B]/95 border-2 border-[#FFE600]/80 rounded-3xl px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col lg:flex-row items-center justify-between gap-2.5 sm:gap-4 shadow-[0_14px_36px_rgba(0,0,0,0.82)] backdrop-blur-md">
+            {/* Left / Center Brand Emblem + Prominent Title + Subtitle */}
             <div
               onClick={exitSpecialModesToStudio}
-              className="flex items-center gap-2 cursor-pointer"
+              className="flex items-center gap-3 sm:gap-3.5 cursor-pointer group"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-[#FFE600] via-[#FF9F1C] to-[#EF233C] border border-white/60 flex items-center justify-center shadow shrink-0">
-                <span className="text-xs sm:text-sm leading-none">🧨</span>
+              <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-br from-[#FFE600] via-[#FF9F1C] to-[#EF233C] border-2 border-white/80 flex items-center justify-center shadow-[0_0_20px_rgba(255,230,0,0.45)] shrink-0 group-hover:scale-105 transition">
+                <span className="text-xl sm:text-2xl leading-none">🧨</span>
               </div>
               <div className="text-left">
-                <h1 className="text-xs sm:text-base font-black tracking-tight leading-none text-white">
-                  Rate My <span className="text-[#FFE600]">Patakha</span>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight leading-none text-white drop-shadow">
+                  Rate My <span className="gold-shimmer">Patakha</span>
                 </h1>
-                <p className="text-[9px] sm:text-[10px] font-semibold text-amber-200/80 mt-0.5 leading-none">
+                <p className="text-[11px] sm:text-xs font-extrabold text-amber-200/90 mt-1 leading-tight">
                   {clans.length || 7} Cracker Clans • Photo/Rangoli Frames • 1v1
                   Battles
                 </p>
               </div>
             </div>
 
-            {/* Right Slim Stat Pills & Action Buttons (Single-line horizontal swipe on mobile, inline on desktop) */}
-            <div className="w-full md:w-auto flex items-center justify-start md:justify-end gap-1.5 overflow-x-auto no-scrollbar pb-0.5 md:pb-0">
-              <div className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/50 text-emerald-300 text-[10px] sm:text-[11px] font-extrabold">
-                <Eye className="w-3 h-3 text-emerald-400" />
+            {/* Right Live Stat Pills & Quick Actions (Centered & wrapped cleanly on mobile, inline on desktop) */}
+            <div className="w-full lg:w-auto flex flex-wrap items-center justify-center lg:justify-end gap-1.5 sm:gap-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-400/55 text-emerald-300 text-[11px] sm:text-xs font-black shadow-sm">
+                <Eye className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{visitorCount.toLocaleString()} Visitors</span>
               </div>
 
@@ -1259,10 +1259,10 @@ export default function PatakhaArenaClient() {
                     behavior: "smooth",
                   })
                 }
-                className="shrink-0 cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] border border-[#FFE600]/35 text-amber-100 text-[10px] sm:text-[11px] font-extrabold hover:border-[#FFE600] transition"
+                className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#15020E] border border-[#FFE600]/40 text-amber-100 text-[11px] sm:text-xs font-black hover:border-[#FFE600] transition"
                 title="Registered Users"
               >
-                <Users className="w-3 h-3 text-[#FFE600]" />
+                <Users className="w-3.5 h-3.5 text-[#FFE600]" />
                 <span>{totalCreators}</span>
               </div>
 
@@ -1272,10 +1272,10 @@ export default function PatakhaArenaClient() {
                     behavior: "smooth",
                   })
                 }
-                className="shrink-0 cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] border border-[#FFE600]/35 text-amber-100 text-[10px] sm:text-[11px] font-extrabold hover:border-[#FFE600] transition"
+                className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#15020E] border border-[#FFE600]/40 text-amber-100 text-[11px] sm:text-xs font-black hover:border-[#FFE600] transition"
                 title="Total Live Votes"
               >
-                <Flame className="w-3 h-3 text-orange-400" />
+                <Flame className="w-3.5 h-3.5 text-orange-400 fill-orange-400" />
                 <span>{totalVotes}</span>
               </div>
 
@@ -1286,18 +1286,18 @@ export default function PatakhaArenaClient() {
                     behavior: "smooth",
                   })
                 }
-                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/40 text-amber-100 text-[10px] sm:text-[11px] font-extrabold transition"
+                className="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/45 text-amber-100 text-xs font-extrabold transition"
               >
-                <Compass className="w-3 h-3 text-[#FFE600]" />
+                <Compass className="w-3.5 h-3.5 text-[#FFE600]" />
                 <span>Browse Clans</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowUserGuideModal(true)}
-                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/40 text-amber-100 text-[10px] sm:text-[11px] font-extrabold transition"
+                className="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#15020E] hover:bg-white/10 border border-[#FFE600]/45 text-amber-100 text-xs font-extrabold transition"
               >
-                <HelpCircle className="w-3 h-3 text-[#FFE600]" />
+                <HelpCircle className="w-3.5 h-3.5 text-[#FFE600]" />
                 <span>Manual</span>
               </button>
 
@@ -1335,9 +1335,9 @@ export default function PatakhaArenaClient() {
                     );
                   }
                 }}
-                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFE600] hover:bg-amber-300 text-[#380828] text-[10px] sm:text-[11px] font-black shadow transition"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#FFE600] hover:bg-amber-300 text-[#380828] text-xs font-black shadow transition"
               >
-                <Swords className="w-3 h-3" />
+                <Swords className="w-3.5 h-3.5" />
                 <span>
                   {isBattleMode
                     ? "Exit Battle"

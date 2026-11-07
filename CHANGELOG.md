@@ -1,5 +1,13 @@
 # Changelog — Rate My Patakha 🧨
 
+## [3.9.1] - Prominent "Rate My Patakha" Header Sizing & Balanced Mobile Pill Row
+- **What Changed**:
+  1. **Enlarged Brand Header & Cracker Emblem (`src/components/PatakhaArenaClient.tsx`)**:
+     - Upgraded the "Rate My Patakha" header title from `text-xs sm:text-base` to `text-xl sm:text-2xl md:text-3xl font-black` with `.gold-shimmer` on "Patakha" so the brand title stands out clearly on both mobile and desktop.
+     - Enlarged the 🧨 cracker badge to `w-11 h-11 sm:w-13 sm:h-13 rounded-2xl` with a warm gold glow and increased the subtitle readability (`text-[11px] sm:text-xs font-extrabold`).
+  2. **Clean Mobile Pill Layout (`src/components/PatakhaArenaClient.tsx`)**:
+     - Centered the live stat pills (`Visitors`, `Users`, `Votes`) cleanly inside the header card on mobile without horizontal cutoff while keeping `Card`, `Battle`, `Ranks`, and `Guide` in the fixed bottom navigation dock.
+
 ## [3.9.0] - Instagram-Style Mobile Bottom Navigation Bar (`Card`, `Battle`, `Ranks`, `Guide`) & Clean `tsconfig.json`
 - **What Changed**:
   1. **Added Fixed Mobile Bottom Navigation Bar (`src/components/PatakhaArenaClient.tsx`)**:
@@ -7,27 +15,3 @@
      - Adjusted mobile bottom page padding (`pb-28 sm:pb-20`) and floating toast position (`bottom-20 sm:bottom-5`) so content never hides behind the bottom navigation dock.
   2. **Removed Deprecated `downlevelIteration` Flag (`tsconfig.json`)**:
      - Kept `"target": "ES2020"` which natively supports ES2015+ `Map`/`Set` iteration without triggering TypeScript's `Option 'downlevelIteration' is deprecated` warning.
-
-## [3.8.2] - Fix Vercel Production TypeScript Build (`MapIterator` Target)
-- **What Changed**:
-  1. **Added `"target": "ES2020"` (`tsconfig.json`)**:
-     - Fixed the `next build` TypeScript error (`Type 'MapIterator<[string, RateBucket]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher`) during Vercel deployment.
-  2. **Updated Rate-Limit Bucket Cleanup (`src/lib/rateLimit.ts`)**:
-     - Switched `for (const [k, v] of buckets.entries())` to `buckets.forEach((v, k) => ...)` for clean iteration without iterator downlevel overhead.
-
-## [3.8.1] - Vercel Hobby Plan Cron Compatibility (`0 0 * * *`)
-- **What Changed**:
-  1. **Updated `vercel.json` Cron Schedule for Vercel Hobby Plan (`vercel.json`)**:
-     - Changed the cron schedule from `"0 * * * *"` (hourly) to `"0 0 * * *"` (once daily at midnight UTC) to comply with Vercel Hobby plan limits.
-     - Hourly `+1` vote increments continue to happen automatically every hour via the lazy hour-slot check inside `loadProfilesAndBattlesFromSource()` and `getArenaSnapshot()` in `src/lib/store.ts`.
-
-## [3.8.0] - Final Production Security Audit & Vercel Hosting Readiness
-- **What Changed**:
-  1. **Eliminated Client-Side Bonus Vote Manipulation (`src/lib/store.ts` & `src/app/api/vote/route.ts`)**:
-     - Removed `clientOthersVotedCount` from the server-side `voteForProfile()` calculation and switched to atomic MongoDB `$inc: { count: 1 }` on `voter_progress` keyed by the server-enforced SHA-256 voter fingerprint so clients cannot forge `othersVotedCount: 3` in API payloads to farm `+1` self-bonus votes.
-  2. **Secured Cron Endpoint (`src/app/api/cron/hourly-votes/route.ts`)**:
-     - Added optional `CRON_SECRET` Bearer token verification and IP rate limiting (`checkRateLimit`) so `/api/cron/hourly-votes` cannot be spammed publicly.
-  3. **Server-Authoritative Battle Timestamps (`src/lib/store.ts`)**:
-     - Hardened `startOrSyncArenaBattle()` so newly created or restarted 1v1 battles always use the server's `Date.now()` timestamp rather than trusting client-supplied `startMs`.
-  4. **Production Security Headers & Image Host Whitelisting (`next.config.mjs`)**:
-     - Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, disabled `X-Powered-By`, and restricted `images.remotePatterns` to Substack domains.
