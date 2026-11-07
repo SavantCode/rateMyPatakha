@@ -28,10 +28,12 @@ import {
   CheckCircle2,
   Lock,
   Info,
+  Radio,
 } from "lucide-react";
 
 interface Props {
   clans: PatakhaClanSummary[];
+  allProfiles?: RankedArenaProfile[];
   activeProfile: RankedArenaProfile | null;
   onProfileSynced: (
     profile: RankedArenaProfile,
@@ -537,6 +539,7 @@ function drawTerracottaMandalaDiya(
 
 export default function DiwaliSnapFrameStudio({
   clans,
+  allProfiles = [],
   activeProfile,
   onProfileSynced,
   onVote,
@@ -595,6 +598,22 @@ export default function DiwaliSnapFrameStudio({
     }
   }, [activeProfile]);
 
+  const cleanUserHandle =
+    username.trim().replace(/^@/, "").replace(/[^a-z0-9_-]/gi, "") ||
+    "creator";
+
+  // Keep dbExistingProfile subscribed to the live-polled `allProfiles` array so canvas text updates live!
+  const livePolledMatch =
+    allProfiles.find(
+      (p) => p.handle.toLowerCase() === cleanUserHandle.toLowerCase()
+    ) || null;
+
+  useEffect(() => {
+    if (livePolledMatch) {
+      setDbExistingProfile(livePolledMatch);
+    }
+  }, [livePolledMatch]);
+
   const pickRandomPatakhaId = useCallback(
     (excludeId?: string): string => {
       if (clans.length === 0) return "murga-bomb";
@@ -630,7 +649,7 @@ export default function DiwaliSnapFrameStudio({
       } catch {
         // ignore
       }
-    }, 320);
+    }, 280);
 
     return () => clearTimeout(timer);
   }, [username]);
@@ -716,10 +735,6 @@ export default function DiwaliSnapFrameStudio({
     }
   };
 
-  const cleanUserHandle =
-    username.trim().replace(/^@/, "").replace(/[^a-z0-9_-]/gi, "") ||
-    "creator";
-
   const isLockedByAnotherUser =
     Boolean(dbExistingProfile) && !getCreatorTokenForHandle(cleanUserHandle);
 
@@ -741,20 +756,26 @@ export default function DiwaliSnapFrameStudio({
   const activeClan =
     clans.find((c) => c.patakhaId === selectedPatakhaId) || clans[0];
 
+  // Prioritize livePolledMatch so vote counts & ranks rendered on the canvas image are 100% live!
   const syncedProfile =
-    dbExistingProfile &&
+    livePolledMatch ||
+    (dbExistingProfile &&
     dbExistingProfile.handle.toLowerCase() === cleanUserHandle.toLowerCase()
       ? dbExistingProfile
       : activeProfile &&
         activeProfile.handle.toLowerCase() === cleanUserHandle.toLowerCase()
       ? activeProfile
-      : null;
+      : null);
 
-  const displayClanRank = syncedProfile ? syncedProfile.clanRank : 1;
+  const displayClanRank = syncedProfile
+    ? syncedProfile.clanRank
+    : (activeClan?.memberCount || 0) + 1;
   const displayClanTotal = syncedProfile
     ? syncedProfile.clanTotalCount
-    : activeClan?.memberCount || 1;
-  const displayGlobalRank = syncedProfile ? syncedProfile.globalRank : 1;
+    : (activeClan?.memberCount || 0) + 1;
+  const displayGlobalRank = syncedProfile
+    ? syncedProfile.globalRank
+    : allProfiles.length + 1;
   const displayVotes = syncedProfile ? syncedProfile.votes : 10;
 
   const drawUserPhotoInsideClip = useCallback(
@@ -818,13 +839,13 @@ export default function DiwaliSnapFrameStudio({
         ctx.fillStyle = "#FDE68A";
         ctx.font = "600 22px system-ui, -apple-system, sans-serif";
         ctx.fillText(
-          "Download Unlimited Times • 100% Private In-Browser",
+          `Live Preview for @${cleanUserHandle} (${displayVotes} Votes)`,
           midX,
           midY + 138
         );
       }
     },
-    [loadedUserImg, zoom, pan]
+    [loadedUserImg, zoom, pan, cleanUserHandle, displayVotes]
   );
 
   const drawOverlappingPatakhaMiniBox = useCallback(
@@ -874,7 +895,7 @@ export default function DiwaliSnapFrameStudio({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
-        `🧨 RANK #${displayClanRank} OF ${displayClanTotal}`,
+        `RANK #${displayClanRank} OF ${displayClanTotal}`,
         0,
         -boxH / 2 + 22
       );
@@ -917,7 +938,7 @@ export default function DiwaliSnapFrameStudio({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
-        `${activeClan.emoji} ${activeClan.name.slice(0, 14).toUpperCase()}`,
+        `${activeClan.name.slice(0, 14).toUpperCase()}`,
         0,
         boxH / 2 - 20
       );
@@ -943,6 +964,7 @@ export default function DiwaliSnapFrameStudio({
           ? username.trim()
           : `@${username.trim()}`
         : "@creator";
+      const liveTitleText = (vibeTag || "HAPPY DIWALI").trim();
 
       if (selectedFrame === "engraved-wood") {
         drawRealisticWoodPlaque(ctx, W, H);
@@ -956,14 +978,14 @@ export default function DiwaliSnapFrameStudio({
         ctx.font = "900 44px system-ui, -apple-system, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`— ${vibeTag.toUpperCase()} —`, W / 2, photoY - 82);
+        ctx.fillText(`— ${liveTitleText.toUpperCase()} —`, W / 2, photoY - 82);
 
         ctx.font = "800 22px system-ui, -apple-system, sans-serif";
         ctx.fillStyle = "#5C2C0C";
         ctx.fillText(
-          `${activeClan?.emoji || "🧨"} ${(
+          `${(
             activeClan?.name || "PATAKHA"
-          ).toUpperCase()} • RANK #${displayClanRank} OF ${displayClanTotal} • 🔥 ${displayVotes} VOTES`,
+          ).toUpperCase()} • RANK #${displayClanRank} OF ${displayClanTotal} • ${displayVotes} VOTES`,
           W / 2,
           photoY - 34
         );
@@ -1154,9 +1176,9 @@ export default function DiwaliSnapFrameStudio({
         ctx.fillStyle = "#FFFFFF";
         ctx.font = "800 23px system-ui, -apple-system, sans-serif";
         ctx.fillText(
-          `${vibeTag.toUpperCase()} • ${activeClan?.emoji || "🧨"} ${(
+          `${liveTitleText.toUpperCase()} • ${(
             activeClan?.name || "PATAKHA"
-          ).toUpperCase()} RANK #${displayClanRank} OF ${displayClanTotal}`,
+          ).toUpperCase()} RANK #${displayClanRank} OF ${displayClanTotal} • ${displayVotes} VOTES`,
           W / 2,
           footerY + 52
         );
@@ -1264,7 +1286,11 @@ export default function DiwaliSnapFrameStudio({
         ctx.font = "900 42px system-ui, -apple-system, sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(vibeTag.slice(0, 16).toUpperCase(), 38, cy - radius + 34);
+        ctx.fillText(
+          liveTitleText.slice(0, 16).toUpperCase(),
+          38,
+          cy - radius + 34
+        );
 
         ctx.fillStyle = "#FFE600";
         ctx.font = "800 22px system-ui, -apple-system, sans-serif";
@@ -1310,7 +1336,7 @@ export default function DiwaliSnapFrameStudio({
         ctx.fillStyle = "#5C2206";
         ctx.font = "800 23px system-ui, -apple-system, sans-serif";
         ctx.fillText(
-          `✦ VOTE FOR ${cleanHandle.toUpperCase()} • 🔥 ${displayVotes} UPVOTES ✦`,
+          `✦ VOTE FOR ${cleanHandle.toUpperCase()} • ${displayVotes} UPVOTES ✦`,
           W / 2,
           footerY + 52
         );
@@ -1353,7 +1379,7 @@ export default function DiwaliSnapFrameStudio({
         ctx.font = "800 22px system-ui, -apple-system, sans-serif";
         ctx.textAlign = "left";
         ctx.fillText(
-          `${activeClan.emoji} ${activeClan.name.toUpperCase()} CLAN • RANK #${displayClanRank} OF ${displayClanTotal}`,
+          `${activeClan.name.toUpperCase()} CLAN • RANK #${displayClanRank} OF ${displayClanTotal}`,
           photoX + 6,
           photoY - 22
         );
@@ -1361,7 +1387,7 @@ export default function DiwaliSnapFrameStudio({
         ctx.textAlign = "right";
         ctx.fillStyle = "#B45309";
         ctx.fillText(
-          `OVERALL #${displayGlobalRank} • 🔥 ${displayVotes}`,
+          `OVERALL #${displayGlobalRank} • ${displayVotes} VOTES`,
           photoX + photoW - 6,
           photoY - 22
         );
@@ -1402,7 +1428,7 @@ export default function DiwaliSnapFrameStudio({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
-        `✨ ${vibeTag} • ${activeClan?.name || "Patakha"}`,
+        `✦ ${liveTitleText} • ${activeClan?.name || "Patakha"}`,
         W / 2,
         footerCenterY - 42
       );
@@ -1506,9 +1532,12 @@ export default function DiwaliSnapFrameStudio({
       await syncUserWithLeaderboard(cleanUserHandle, selectedPatakhaId, false);
       renderCompositeToCanvas(previewCanvasRef.current);
 
-      const text = `🧨 Check out my Diwali Frame & Patakha Card (${
+      const textWithUrl = `Check out my Diwali Frame and "${
         activeClan?.name || "Patakha"
-      } — Rank #${displayClanRank})!\n\n🔥 Upvote @${cleanUserHandle} using my voting link so I rank #1: ${shareUrl}`;
+      }" card (Rank #${displayClanRank} of ${displayClanTotal}) on Rate My Patakha. Cast your upvote for @${cleanUserHandle} on the Diwali Patakha Leaderboard: ${shareUrl}`;
+      const textOnly = `Check out my Diwali Frame and "${
+        activeClan?.name || "Patakha"
+      }" card (Rank #${displayClanRank} of ${displayClanTotal}) on Rate My Patakha. Cast your upvote for @${cleanUserHandle} on the Diwali Patakha Leaderboard:`;
 
       const blob = await new Promise<Blob | null>((resolve) =>
         previewCanvasRef.current?.toBlob((b) => resolve(b), "image/png")
@@ -1522,21 +1551,21 @@ export default function DiwaliSnapFrameStudio({
         );
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: `Vote for @${cleanUserHandle} on Rate My Patakha!`,
-            text,
+            title: `Vote for @${cleanUserHandle} on Rate My Patakha`,
+            text: textWithUrl,
             files: [file],
           });
           return;
         }
         await navigator.share({
-          title: `Vote for @${cleanUserHandle} on Rate My Patakha!`,
-          text,
+          title: `Vote for @${cleanUserHandle} on Rate My Patakha`,
+          text: textOnly,
           url: shareUrl,
         });
         return;
       }
 
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(textWithUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2400);
       await handleDownloadFramedSnap();
@@ -1580,7 +1609,9 @@ export default function DiwaliSnapFrameStudio({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FFE600] to-[#FF9F1C] text-[#380828] font-black text-xs shadow active:scale-95 transition"
               >
                 <Camera className="w-3.5 h-3.5 stroke-[2.5]" />
-                {loadedUserImg ? "Change Photo / Rangoli" : "Upload Photo / Rangoli"}
+                {loadedUserImg
+                  ? "Change Photo / Rangoli"
+                  : "Upload Photo / Rangoli"}
               </button>
 
               <button
@@ -1619,6 +1650,48 @@ export default function DiwaliSnapFrameStudio({
                 <Smartphone className="w-3 h-3" />
                 9:16
               </button>
+            </div>
+          </div>
+
+          {/* LIVE TEXT ON FRAME QUICK EDITOR BAR (Updates canvas text on every keystroke) */}
+          <div className="bg-[#1A0312]/95 border-2 border-[#FFE600]/55 rounded-2xl p-2.5 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-[#FFE600]">
+              <span className="inline-flex items-center gap-1">
+                <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                Live Frame Text Editor (Updates Image Instantly)
+              </span>
+              <span className="text-emerald-300">
+                Rank #{displayClanRank} • {displayVotes} Votes
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[9px] font-extrabold uppercase text-amber-200/75 mb-0.5">
+                  @Username on Frame
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onBlur={() =>
+                    syncUserWithLeaderboard(username, selectedPatakhaId, false)
+                  }
+                  placeholder="@yourhandle"
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#12010B] border border-[#FFE600]/45 text-white font-bold text-xs focus:outline-none focus:border-[#FFE600]"
+                />
+              </div>
+              <div>
+                <label className="block text-[9px] font-extrabold uppercase text-amber-200/75 mb-0.5">
+                  Greeting Title on Frame
+                </label>
+                <input
+                  type="text"
+                  value={vibeTag}
+                  onChange={(e) => setVibeTag(e.target.value)}
+                  placeholder="HAPPY DIWALI"
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#12010B] border border-[#FFE600]/45 text-[#FFE600] font-bold text-xs focus:outline-none focus:border-[#FFE600]"
+                />
+              </div>
             </div>
           </div>
 
@@ -1679,7 +1752,7 @@ export default function DiwaliSnapFrameStudio({
           <div className="bg-amber-950/85 border-2 border-[#FFE600]/70 rounded-2xl p-3 text-xs text-amber-100 space-y-1 shadow-lg">
             <div className="font-black text-[#FFE600] flex items-center gap-1.5">
               <Info className="w-4 h-4 shrink-0" />
-              <span>Important: Download Your Framed Photo First! 📸</span>
+              <span>Important: Download Your Framed Photo First!</span>
             </div>
             <p className="text-[11px] sm:text-xs text-amber-100/90 leading-relaxed">
               For your privacy, your uploaded photo or Rangoli is{" "}
@@ -1730,7 +1803,7 @@ export default function DiwaliSnapFrameStudio({
                 Voting Link for @{cleanUserHandle}
               </span>
               <span className="text-emerald-300">
-                {isSyncingArena ? "Syncing DB..." : `🔥 ${displayVotes} Upvotes`}
+                {isSyncingArena ? "Syncing DB..." : `${displayVotes} Upvotes`}
               </span>
             </div>
 
@@ -1772,20 +1845,20 @@ export default function DiwaliSnapFrameStudio({
             Handcrafted Wooden & Festive Diwali Frames
           </div>
           <h2 className="text-xl sm:text-3xl font-black text-white mt-1.5">
-            Frame Your Photo, Rangoli or Diya Snap 🪵🪔
+            Frame Your Photo, Rangoli or Diya Snap
           </h2>
           <p className="text-xs sm:text-sm text-amber-100/85 mt-1">
             Upload your{" "}
             <strong className="text-[#FFE600]">
               selfie, Rangoli artwork, Diyas, or any festive photograph
             </strong>{" "}
-            into our handcrafted frames. Download unlimited times anytime and
-            share the image alongside your voting link!
+            into our handcrafted frames. All text, ranks, and votes rendered on
+            the frame update <strong>live in real time</strong>!
           </p>
         </div>
 
         {/* DB Registration Status Pill */}
-        {dbExistingProfile && (
+        {syncedProfile && (
           <div className="bg-emerald-950/80 border border-emerald-400/50 rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs">
             <span className="text-emerald-200 font-bold flex items-center gap-1.5">
               {isLockedByAnotherUser ? (
@@ -1794,13 +1867,13 @@ export default function DiwaliSnapFrameStudio({
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               )}
               <span>
-                <strong>@{dbExistingProfile.handle}</strong> is registered in DB
-                with <strong>{dbExistingProfile.patakhaName}</strong> (Rank #
-                {dbExistingProfile.clanRank})
+                Live Synced: <strong>@{syncedProfile.handle}</strong> •{" "}
+                <strong>{syncedProfile.patakhaName}</strong> (Rank #
+                {syncedProfile.clanRank} of {syncedProfile.clanTotalCount})
               </span>
             </span>
             <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black shrink-0">
-              🔥 {dbExistingProfile.votes}
+              🔥 {syncedProfile.votes} Votes
             </span>
           </div>
         )}
@@ -1843,7 +1916,7 @@ export default function DiwaliSnapFrameStudio({
             }`}
           >
             <Type className="w-3.5 h-3.5" />
-            <span>3. @Username</span>
+            <span>3. Live Text</span>
           </button>
         </div>
 
@@ -2017,7 +2090,7 @@ export default function DiwaliSnapFrameStudio({
           <div className="space-y-3.5">
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-[#FFE600] mb-1">
-                Your @Username (Checked in DB & Ranked on Leaderboard)
+                Your @Username (Renders Live on Frame & Syncs to Leaderboard)
               </label>
               <div className="flex gap-2">
                 <input
@@ -2044,7 +2117,7 @@ export default function DiwaliSnapFrameStudio({
 
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-[#FFE600] mb-1">
-                Frame Header / Greeting Title
+                Frame Header / Greeting Title (Renders Live on Image)
               </label>
               <input
                 type="text"

@@ -6,14 +6,17 @@ import {
 import { getAvailablePatakhas } from "@/lib/patakhas";
 import { getOrCreateArenaProfile } from "@/lib/store";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { recordApiTelemetry, recordSystemError } from "@/lib/telemetry";
 
 export async function POST(request: Request) {
+  const start = Date.now();
   try {
     const forwardedFor = request.headers.get("x-forwarded-for") || "";
     const ipPart = forwardedFor.split(",")[0]?.trim() || "local";
 
     const rl = checkRateLimit(`analyze:${ipPart}`, 35, 60_000);
     if (!rl.allowed) {
+      recordApiTelemetry("/api/analyze", Date.now() - start, false);
       return NextResponse.json(
         { error: "Slow down! Too many requests in a minute." },
         { status: 429 }
@@ -76,6 +79,8 @@ export async function POST(request: Request) {
       creatorToken,
     });
 
+    recordApiTelemetry("/api/analyze", Date.now() - start, false, "analyze");
+
     return NextResponse.json({
       profile,
       patakha: classification.patakha,
@@ -85,6 +90,13 @@ export async function POST(request: Request) {
       snapshot,
     });
   } catch (err) {
+    recordApiTelemetry("/api/analyze", Date.now() - start, true, "analyze");
+    await recordSystemError({
+      source: "server",
+      route: "/api/analyze",
+      message: err instanceof Error ? err.message : "Error categorizing profile",
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     console.error("Error categorizing profile:", err);
     return NextResponse.json(
       { error: "Failed to categorize profile. Try entering your username!" },

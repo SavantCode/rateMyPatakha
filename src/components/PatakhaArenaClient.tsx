@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import confetti from "canvas-confetti";
 import FireworkBackground from "@/components/FireworkBackground";
 import DiwaliDecorationLights from "@/components/DiwaliDecorationLights";
@@ -8,12 +8,15 @@ import PatakhaMemeCard from "@/components/PatakhaMemeCard";
 import DiwaliSnapFrameStudio from "@/components/DiwaliSnapFrameStudio";
 import PublicVoteSpotlight from "@/components/PublicVoteSpotlight";
 import HeadToHeadBattle from "@/components/HeadToHeadBattle";
+import MyActiveBattlesPanel from "@/components/MyActiveBattlesPanel";
 import ClanWarsMatrix from "@/components/ClanWarsMatrix";
 import ArenaLeaderboard from "@/components/ArenaLeaderboard";
+import ClientErrorReporter from "@/components/ClientErrorReporter";
 import { PatakhaId } from "@/lib/patakhas";
 import {
   ArenaSnapshot,
   PatakhaClanSummary,
+  RankedArenaBattle,
   RankedArenaProfile,
   RecentArenaEvent,
 } from "@/lib/store";
@@ -33,13 +36,14 @@ import {
   HelpCircle,
   X,
   ShieldCheck,
-  Mail,
+  Github,
   Code2,
   AtSign,
-  Clock,
   BookOpen,
   Compass,
   Download,
+  Gift,
+  Clock,
 } from "lucide-react";
 
 const QUICK_SAMPLE_USERS = [
@@ -51,17 +55,23 @@ const QUICK_SAMPLE_USERS = [
   "ananya",
 ];
 
-type GuideTabId = "quickstart" | "battle-tagging" | "frames" | "perks";
+type GuideTabId = "quickstart" | "battle-tagging" | "frames" | "finale";
+
+const BROADCAST_CHANNEL_NAME = "patakha_arena_live_channel_v1";
 
 function getOrCreateClientVisitorId(): string {
   if (typeof window === "undefined") return "";
-  const key = "patakha_visitor_id_v1";
-  let existing = window.localStorage.getItem(key);
-  if (!existing) {
-    existing = `v_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    window.localStorage.setItem(key, existing);
+  try {
+    const key = "patakha_visitor_id_v1";
+    let existing = window.localStorage.getItem(key);
+    if (!existing) {
+      existing = `v_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      window.localStorage.setItem(key, existing);
+    }
+    return existing;
+  } catch {
+    return "";
   }
-  return existing;
 }
 
 function getStoredVotedHandles(): Set<string> {
@@ -81,6 +91,46 @@ function saveStoredVotedHandles(set: Set<string>) {
     window.localStorage.setItem(
       "patakha_voted_handles_v1",
       JSON.stringify(Array.from(set))
+    );
+  } catch {
+    // ignore
+  }
+}
+
+function getStoredMyHandle(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem("patakha_my_handle_v1") || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveStoredMyHandle(handle: string) {
+  if (typeof window === "undefined" || !handle) return;
+  try {
+    window.localStorage.setItem("patakha_my_handle_v1", handle.toLowerCase());
+  } catch {
+    // ignore
+  }
+}
+
+function getStoredOthersVotedCount(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.localStorage.getItem("patakha_others_voted_count_v1");
+    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveStoredOthersVotedCount(count: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      "patakha_others_voted_count_v1",
+      String(Math.max(0, count))
     );
   } catch {
     // ignore
@@ -113,8 +163,12 @@ export default function PatakhaArenaClient() {
     "pragmaticengineer",
     "aarav",
   ]);
-  const [battleDays, setBattleDays] = useState<number>(3);
-  const [battleStartMs, setBattleStartMs] = useState<number>(() => Date.now());
+  const [battleProfilesMap, setBattleProfilesMap] = useState<
+    Record<string, RankedArenaProfile>
+  >({});
+  const [battleHours, setBattleHours] = useState<number>(12);
+  const [battleStartMs, setBattleStartMs] = useState<number>(1729728000000);
+  const [activeBattles, setActiveBattles] = useState<RankedArenaBattle[]>([]);
 
   const [activeStudioTab, setActiveStudioTab] = useState<
     "patakha-card" | "snap-frame"
@@ -129,9 +183,14 @@ export default function PatakhaArenaClient() {
     useState<RankedArenaProfile | null>(null);
   const [lastLoadedWasExisting, setLastLoadedWasExisting] = useState(false);
 
+  const [myHandle, setMyHandle] = useState<string>("");
+  const [othersVotedCount, setOthersVotedCount] = useState<number>(0);
+
   const [featuredProfile, setFeaturedProfile] =
     useState<RankedArenaProfile | null>(null);
+  const featuredProfileRef = useRef<RankedArenaProfile | null>(null);
   const [profiles, setProfiles] = useState<RankedArenaProfile[]>([]);
+  const profilesRef = useRef<RankedArenaProfile[]>([]);
   const [clans, setClans] = useState<PatakhaClanSummary[]>([]);
   const [recentEvents, setRecentEvents] = useState<RecentArenaEvent[]>([]);
   const [totalCreators, setTotalCreators] = useState(0);
@@ -149,9 +208,23 @@ export default function PatakhaArenaClient() {
   const categoriesSectionRef = useRef<HTMLDivElement | null>(null);
   const leaderboardSectionRef = useRef<HTMLDivElement | null>(null);
 
+  // System Design Polling Refs: ETag caching, Single-Flight coalescing, Exponential Backoff, BroadcastChannel
+  const lastEtagRef = useRef<string | null>(null);
+  const inflightPollRef = useRef<Promise<void> | null>(null);
+  const consecutiveErrorsRef = useRef<number>(0);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
+
+  useEffect(() => {
+    featuredProfileRef.current = featuredProfile;
+  }, [featuredProfile]);
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3200);
+    setTimeout(() => setToastMsg(null), 4200);
   };
 
   const triggerDiwaliConfetti = () => {
@@ -167,20 +240,192 @@ export default function PatakhaArenaClient() {
     }
   };
 
+  const syncSnapshotToState = useCallback(
+    (snapshot: ArenaSnapshot, broadcastToOtherTabs = false) => {
+      const list = snapshot.profiles || [];
+      setProfiles(list);
+      profilesRef.current = list;
+      setClans(snapshot.clans || []);
+      setActiveBattles(snapshot.activeBattles || []);
+      setRecentEvents(snapshot.recentEvents || []);
+      setTotalCreators(snapshot.totalCreators || 0);
+      setTotalVotes(snapshot.totalVotes || 0);
+      if (typeof snapshot.visitorCount === "number") {
+        setVisitorCount(snapshot.visitorCount);
+      }
+
+      // Keep featuredProfile and battleProfilesMap synced with live vote counts & ranks
+      const currentFeatured = featuredProfileRef.current;
+      if (currentFeatured) {
+        const updatedFeatured = list.find(
+          (p) =>
+            p.handle.toLowerCase() === currentFeatured.handle.toLowerCase()
+        );
+        if (updatedFeatured) {
+          setFeaturedProfile(updatedFeatured);
+        }
+      }
+
+      setBattleProfilesMap((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const k of Object.keys(next)) {
+          const fresh = list.find((p) => p.handle.toLowerCase() === k);
+          if (
+            fresh &&
+            (fresh.votes !== next[k].votes ||
+              fresh.globalRank !== next[k].globalRank)
+          ) {
+            next[k] = fresh;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+
+      if (broadcastToOtherTabs && broadcastChannelRef.current) {
+        try {
+          broadcastChannelRef.current.postMessage({
+            type: "SNAPSHOT_SYNC",
+            snapshot,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
+    []
+  );
+
+  // Setup Cross-Tab BroadcastChannel so actions in one tab sync all other open tabs in 0ms
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) {
+      return;
+    }
+    try {
+      const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      broadcastChannelRef.current = channel;
+      channel.onmessage = (event) => {
+        if (event.data?.type === "SNAPSHOT_SYNC" && event.data?.snapshot) {
+          syncSnapshotToState(event.data.snapshot, false);
+        }
+      };
+      return () => {
+        channel.close();
+        broadcastChannelRef.current = null;
+      };
+    } catch {
+      return;
+    }
+  }, [syncSnapshotToState]);
+
+  /**
+   * System-Design Single-Flight + ETag Conditional Poll Function:
+   * - Coalesces concurrent calls into a single network promise.
+   * - Sends `If-None-Match` so unchanged state returns `304 Not Modified` with 0-byte payload.
+   */
+  const pollArenaSnapshot = useCallback(
+    async (forceFresh = false): Promise<void> => {
+      if (inflightPollRef.current) {
+        return inflightPollRef.current;
+      }
+
+      const task = (async () => {
+        try {
+          const headers: Record<string, string> = {};
+          if (!forceFresh && lastEtagRef.current) {
+            headers["If-None-Match"] = lastEtagRef.current;
+          }
+
+          const res = await fetch("/api/leaderboard", {
+            cache: "no-store",
+            headers,
+          });
+
+          if (res.status === 304) {
+            consecutiveErrorsRef.current = 0;
+            return;
+          }
+
+          if (!res.ok) {
+            consecutiveErrorsRef.current += 1;
+            return;
+          }
+
+          const newEtag = res.headers.get("etag");
+          if (newEtag) {
+            lastEtagRef.current = newEtag;
+          }
+
+          consecutiveErrorsRef.current = 0;
+          const snapshot: ArenaSnapshot = await res.json();
+          syncSnapshotToState(snapshot, false);
+        } catch {
+          consecutiveErrorsRef.current += 1;
+        } finally {
+          inflightPollRef.current = null;
+        }
+      })();
+
+      inflightPollRef.current = task;
+      return task;
+    },
+    [syncSnapshotToState]
+  );
+
+  /**
+   * Adaptive Jittered Polling Loop + Page Visibility API Listener:
+   * - Base interval: 3000ms + random(0..450ms) jitter to prevent thundering herd.
+   * - Exponential backoff on network failure (up to 15s).
+   * - Pauses background polling when tab is hidden; triggers instant fetch when tab regains visibility/focus.
+   */
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isCancelled = false;
+
+    const scheduleNextPoll = () => {
+      if (isCancelled) return;
+      const errCount = consecutiveErrorsRef.current;
+      const backoffMultiplier = Math.min(4, Math.pow(1.6, errCount));
+      const jitterMs = Math.floor(Math.random() * 450);
+      const delayMs = Math.round(3000 * backoffMultiplier) + jitterMs;
+
+      timeoutId = setTimeout(async () => {
+        if (isCancelled) return;
+        if (typeof document === "undefined" || !document.hidden) {
+          await pollArenaSnapshot(false);
+        }
+        scheduleNextPoll();
+      }, delayMs);
+    };
+
+    scheduleNextPoll();
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        pollArenaSnapshot(false);
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+
+    return () => {
+      isCancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    };
+  }, [pollArenaSnapshot]);
+
   const applyArenaSnapshot = (
     profile: RankedArenaProfile,
     snapshot: ArenaSnapshot,
     syncUrl = false
   ) => {
     setFeaturedProfile(profile);
-    setProfiles(snapshot.profiles || []);
-    setClans(snapshot.clans || []);
-    setRecentEvents(snapshot.recentEvents || []);
-    setTotalCreators(snapshot.totalCreators || 0);
-    setTotalVotes(snapshot.totalVotes || 0);
-    if (typeof snapshot.visitorCount === "number") {
-      setVisitorCount(snapshot.visitorCount);
-    }
+    featuredProfileRef.current = profile;
+    syncSnapshotToState(snapshot, true);
     if (syncUrl && typeof window !== "undefined" && profile?.handle) {
       const nextUrl = `${window.location.pathname}?u=${encodeURIComponent(
         profile.handle
@@ -195,81 +440,122 @@ export default function PatakhaArenaClient() {
     setUrlOrHandle("");
     setExistingUserMatch(null);
     if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.pushState({}, "", window.location.pathname);
     }
     topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const startHeadToHeadBattle = async (
-    rawA: string,
-    rawB: string,
-    daysParam = battleDays,
-    startMsParam?: number,
-    currentProfilesList = profiles
-  ) => {
-    const cleanA = rawA
-      .trim()
-      .toLowerCase()
-      .replace(/^@+/, "")
-      .replace(/[^a-z0-9_-]/g, "");
-    let cleanB = rawB
-      .trim()
-      .toLowerCase()
-      .replace(/^@+/, "")
-      .replace(/[^a-z0-9_-]/g, "");
+  /**
+   * Starts or syncs a 1v1 Head-to-Head Battle in the Database (`POST /api/battle`)
+   * so the exact countdown (`startMs` + `hours`) and contenders are persisted and visible
+   * to all users across the website!
+   */
+  const startHeadToHeadBattle = useCallback(
+    async (
+      rawA: string,
+      rawB: string,
+      hoursParam = battleHours,
+      startMsParam?: number,
+      explicitProfilesList?: RankedArenaProfile[],
+      shouldScroll = false,
+      forceUpdate = false
+    ) => {
+      const cleanA = rawA
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, "")
+        .replace(/[^a-z0-9_-]/g, "")
+        .replace(/^[-_]+|[-_]+$/g, "")
+        .slice(0, 32);
 
-    if (!cleanA) return;
+      let cleanB = rawB
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, "")
+        .replace(/[^a-z0-9_-]/g, "")
+        .replace(/^[-_]+|[-_]+$/g, "")
+        .slice(0, 32);
 
-    if (!cleanB || cleanA === cleanB) {
-      cleanB =
-        currentProfilesList.find((p) => p.handle.toLowerCase() !== cleanA)
-          ?.handle || (cleanA === "aarav" ? "rohan" : "aarav");
-    }
+      if (!cleanA) return;
 
-    const clampedDays = Math.min(90, Math.max(1, Number(daysParam) || 3));
-    const resolvedStartMs =
-      startMsParam && !Number.isNaN(startMsParam) ? startMsParam : Date.now();
+      const latestProfiles = explicitProfilesList || profilesRef.current;
 
-    let latestProfiles = currentProfilesList;
+      if (!cleanB || cleanA === cleanB) {
+        cleanB =
+          latestProfiles.find((p) => p.handle.toLowerCase() !== cleanA)
+            ?.handle || (cleanA === "aarav" ? "rohan" : "aarav");
+      }
 
-    for (const h of [cleanA, cleanB]) {
-      const exists = latestProfiles.some((p) => p.handle.toLowerCase() === h);
-      if (!exists) {
-        const res = await fetch("/api/analyze", {
+      const clampedHours = Math.min(48, Math.max(1, Number(hoursParam) || 12));
+
+      try {
+        const res = await fetch("/api/battle", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: h }),
+          body: JSON.stringify({
+            handleA: cleanA,
+            handleB: cleanB,
+            hours: clampedHours,
+            startMs: startMsParam,
+            forceUpdate,
+          }),
         });
+
         if (res.ok) {
           const data = await res.json();
-          if (data.snapshot?.profiles) {
-            latestProfiles = data.snapshot.profiles;
-            setProfiles(data.snapshot.profiles);
-            setClans(data.snapshot.clans || []);
-            setRecentEvents(data.snapshot.recentEvents || []);
-            setTotalCreators(data.snapshot.totalCreators || 0);
-            setTotalVotes(data.snapshot.totalVotes || 0);
+          if (data.snapshot) {
+            syncSnapshotToState(data.snapshot, true);
+          }
+          if (data.battle) {
+            const b: RankedArenaBattle = data.battle;
+            setBattleProfilesMap((prev) => ({
+              ...prev,
+              [b.handleA.toLowerCase()]: b.fighterA,
+              [b.handleB.toLowerCase()]: b.fighterB,
+            }));
+            setBattleHandles([b.handleA, b.handleB]);
+            setBattleHours(b.hours);
+            setBattleStartMs(b.startMs);
+            setIsPublicVoteMode(false);
+            setIsBattleMode(true);
+
+            if (typeof window !== "undefined") {
+              const vsUrl = `${
+                window.location.pathname
+              }?vs=${encodeURIComponent(b.handleA)},${encodeURIComponent(
+                b.handleB
+              )}&hours=${b.hours}&start=${b.startMs}`;
+              window.history.replaceState({}, "", vsUrl);
+            }
+
+            if (shouldScroll) {
+              topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+            return;
           }
         }
+      } catch {
+        // Fallback to local state if network fails
       }
-    }
 
-    setBattleHandles([cleanA, cleanB]);
-    setBattleDays(clampedDays);
-    setBattleStartMs(resolvedStartMs);
-    setIsPublicVoteMode(false);
-    setIsBattleMode(true);
+      const now = Date.now();
+      const resolvedStartMs =
+        startMsParam && !Number.isNaN(startMsParam) && !forceUpdate
+          ? Math.min(now, Math.max(now - 30 * 86_400_000, startMsParam))
+          : now;
 
-    if (typeof window !== "undefined") {
-      const vsUrl = `${window.location.pathname}?vs=${encodeURIComponent(
-        cleanA
-      )},${encodeURIComponent(
-        cleanB
-      )}&days=${clampedDays}&start=${resolvedStartMs}`;
-      window.history.replaceState({}, "", vsUrl);
-    }
-    topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+      setBattleHandles([cleanA, cleanB]);
+      setBattleHours(clampedHours);
+      setBattleStartMs(resolvedStartMs);
+      setIsPublicVoteMode(false);
+      setIsBattleMode(true);
+
+      if (shouldScroll) {
+        topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    },
+    [battleHours, syncSnapshotToState]
+  );
 
   useEffect(() => {
     if (isPublicVoteMode || isBattleMode) return;
@@ -298,7 +584,11 @@ export default function PatakhaArenaClient() {
   }, [urlOrHandle, isPublicVoteMode, isBattleMode]);
 
   useEffect(() => {
+    setBattleStartMs(Date.now());
     setVotedHandles(getStoredVotedHandles());
+    setMyHandle(getStoredMyHandle());
+    setOthersVotedCount(getStoredOthersVotedCount());
+
     const visitorId = getOrCreateClientVisitorId();
 
     fetch("/api/visitors", {
@@ -318,7 +608,8 @@ export default function PatakhaArenaClient() {
       try {
         const params = new URLSearchParams(window.location.search);
         const vsParam = (params.get("vs") || "").trim();
-        const daysQuery = parseInt(params.get("days") || "3", 10);
+        const hoursQuery = parseInt(params.get("hours") || "", 10);
+        const daysQuery = parseInt(params.get("days") || "", 10);
         const startQuery = parseInt(params.get("start") || "", 10);
         const sharedUser = (
           params.get("u") ||
@@ -326,28 +617,37 @@ export default function PatakhaArenaClient() {
           ""
         ).trim();
 
-        const res = await fetch("/api/leaderboard");
+        const res = await fetch("/api/leaderboard", { cache: "no-store" });
         if (!res.ok) return;
+        const etag = res.headers.get("etag");
+        if (etag) lastEtagRef.current = etag;
         const snapshot: ArenaSnapshot = await res.json();
 
-        setProfiles(snapshot.profiles || []);
-        setClans(snapshot.clans || []);
-        setRecentEvents(snapshot.recentEvents || []);
-        setTotalCreators(snapshot.totalCreators || 0);
-        setTotalVotes(snapshot.totalVotes || 0);
-        if (typeof snapshot.visitorCount === "number") {
-          setVisitorCount(snapshot.visitorCount);
-        }
+        const loadedProfiles = snapshot.profiles || [];
+        syncSnapshotToState(snapshot, false);
+
+        // Pre-warm all Patakha card images into browser cache
+        (snapshot.clans || []).forEach((clan) => {
+          const preload = new Image();
+          preload.src = clan.imageUrl;
+        });
 
         if (vsParam && vsParam.includes(",")) {
           const [rawA, rawB] = vsParam.split(",");
           if (rawA) {
+            const resolvedHours = !Number.isNaN(hoursQuery)
+              ? hoursQuery
+              : !Number.isNaN(daysQuery)
+              ? daysQuery * 24
+              : 12;
             await startHeadToHeadBattle(
               rawA,
               rawB || "",
-              Number.isNaN(daysQuery) ? 3 : daysQuery,
-              Number.isNaN(startQuery) ? Date.now() : startQuery,
-              snapshot.profiles || []
+              resolvedHours,
+              Number.isNaN(startQuery) ? undefined : startQuery,
+              loadedProfiles,
+              false,
+              false
             );
             return;
           }
@@ -359,12 +659,13 @@ export default function PatakhaArenaClient() {
             .replace(/^@+/, "")
             .replace(/[^a-z0-9_-]/g, "");
           if (cleanTarget) {
-            const existingInLeaderboard = (snapshot.profiles || []).find(
+            const existingInLeaderboard = loadedProfiles.find(
               (p) => p.handle.toLowerCase() === cleanTarget
             );
 
             if (existingInLeaderboard) {
               setFeaturedProfile(existingInLeaderboard);
+              featuredProfileRef.current = existingInLeaderboard;
               setIsPublicVoteMode(true);
               return;
             }
@@ -387,14 +688,37 @@ export default function PatakhaArenaClient() {
           }
         }
 
-        if (snapshot.profiles?.length > 0) {
-          setFeaturedProfile(snapshot.profiles[0]);
+        const storedHandle = getStoredMyHandle();
+        const mySavedProfile = storedHandle
+          ? loadedProfiles.find(
+              (p) => p.handle.toLowerCase() === storedHandle.toLowerCase()
+            )
+          : null;
+
+        if (mySavedProfile) {
+          setFeaturedProfile(mySavedProfile);
+          featuredProfileRef.current = mySavedProfile;
+        } else if (loadedProfiles.length > 0) {
+          setFeaturedProfile(loadedProfiles[0]);
+          featuredProfileRef.current = loadedProfiles[0];
         }
       } catch (e) {
         console.error("Failed to load arena:", e);
       }
     }
     initArena();
+
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const vs = params.get("vs");
+      const u = params.get("u") || params.get("vote");
+      if (!vs && !u) {
+        setIsBattleMode(false);
+        setIsPublicVoteMode(false);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -420,34 +744,40 @@ export default function PatakhaArenaClient() {
         return;
       }
 
+      if (data.profile?.handle) {
+        setMyHandle(data.profile.handle);
+        saveStoredMyHandle(data.profile.handle);
+      }
+
       if (data.creatorToken && data.profile?.handle) {
         saveCreatorToken(data.profile.handle, data.creatorToken);
       }
 
       setLastLoadedWasExisting(Boolean(data.alreadyExists));
-      applyArenaSnapshot(data.profile, data.snapshot, false);
+      applyArenaSnapshot(data.profile, data.snapshot, true);
+      setActiveStudioTab("patakha-card");
+      setIsPublicVoteMode(false);
+      setIsBattleMode(false);
+      triggerDiwaliConfetti();
 
       if (data.alreadyExists) {
         showToast(
-          `Loaded @${data.profile.handle}'s registered ${data.profile.patakhaName} card (Rank #${data.profile.clanRank})! 🎯`
+          `Loaded @${data.profile.handle}'s registered ${data.profile.patakhaName} card (Rank #${data.profile.clanRank})!`
         );
       } else {
         showToast(
-          `Created new ${data.profile.patakhaName} card for @${data.profile.handle}! 🧨`
+          `Created @${data.profile.handle} as ${data.profile.patakhaName} (Rank #${data.profile.clanRank})!`
         );
-        triggerDiwaliConfetti();
       }
 
-      if (typeof window !== "undefined" && window.innerWidth < 1024) {
-        setTimeout(() => {
-          cardSectionRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }, 120);
-      }
+      setTimeout(() => {
+        cardSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }, 150);
     } catch {
-      setErrorMsg("Network error. Please try again!");
+      setErrorMsg("Something went wrong. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -460,147 +790,219 @@ export default function PatakhaArenaClient() {
 
   const handleVote = async (handle: string) => {
     const cleanKey = handle.toLowerCase();
+    const activeMyHandle = (
+      myHandle ||
+      featuredProfile?.handle ||
+      ""
+    ).toLowerCase();
+
     if (votedHandles.has(cleanKey)) {
-      showToast(`You already upvoted @${handle}! 🔥`);
+      showToast(`You already upvoted @${handle}!`);
       return;
     }
 
     setVotingHandle(handle);
 
-    const prevProfiles = profiles;
-    const prevFeatured = featuredProfile;
-    const prevTotalVotes = totalVotes;
+    const isVotingForOther = !activeMyHandle || activeMyHandle !== cleanKey;
+    const nextOthersCount = isVotingForOther
+      ? othersVotedCount + 1
+      : othersVotedCount;
 
-    const nextSet = new Set(votedHandles);
-    nextSet.add(cleanKey);
-    setVotedHandles(nextSet);
-    saveStoredVotedHandles(nextSet);
+    // Optimistic UI update
+    const updatedVoted = new Set(votedHandles);
+    updatedVoted.add(cleanKey);
+    setVotedHandles(updatedVoted);
+    saveStoredVotedHandles(updatedVoted);
 
-    setTotalVotes((v) => v + 1);
-    setProfiles((curr) =>
-      curr.map((p) =>
-        p.handle.toLowerCase() === cleanKey ? { ...p, votes: p.votes + 1 } : p
-      )
-    );
-    if (featuredProfile && featuredProfile.handle.toLowerCase() === cleanKey) {
-      setFeaturedProfile({
-        ...featuredProfile,
-        votes: featuredProfile.votes + 1,
-      });
+    if (isVotingForOther) {
+      setOthersVotedCount(nextOthersCount);
+      saveStoredOthersVotedCount(nextOthersCount);
     }
-    triggerDiwaliConfetti();
 
     try {
       const voterId = getOrCreateClientVisitorId();
       const res = await fetch("/api/vote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle, voterId }),
+        body: JSON.stringify({
+          handle,
+          voterId,
+          voterHandle: activeMyHandle,
+          othersVotedCount: nextOthersCount,
+        }),
       });
-
-      if (!res.ok) {
-        setProfiles(prevProfiles);
-        setFeaturedProfile(prevFeatured);
-        setTotalVotes(prevTotalVotes);
-        return;
-      }
-
       const data = await res.json();
-      setProfiles(data.snapshot.profiles);
-      setClans(data.snapshot.clans);
-      setRecentEvents(data.snapshot.recentEvents || []);
-      setTotalCreators(data.snapshot.totalCreators);
-      setTotalVotes(data.snapshot.totalVotes);
+      if (!res.ok) return;
 
-      if (
-        featuredProfile &&
-        featuredProfile.handle.toLowerCase() === cleanKey &&
-        data.profile
-      ) {
-        setFeaturedProfile(data.profile);
+      if (typeof data.othersVotedCount === "number") {
+        setOthersVotedCount(data.othersVotedCount);
+        saveStoredOthersVotedCount(data.othersVotedCount);
       }
 
       if (data.alreadyVoted) {
         showToast(`Your upvote for @${handle} is already counted!`);
+      } else if (data.bonusAwarded && data.bonusProfile) {
+        triggerDiwaliConfetti();
+        showToast(
+          `🎁 3-Vote Bonus Unlocked! You upvoted 3 users, so @${data.bonusProfile.handle} got +1 Bonus Vote (${data.bonusProfile.votes} total)!`
+        );
       } else {
-        showToast(`Upvote added for @${handle}! 🧨`);
+        triggerDiwaliConfetti();
+        const rem = 3 - ((data.othersVotedCount ?? nextOthersCount) % 3);
+        if (activeMyHandle && activeMyHandle !== cleanKey) {
+          showToast(
+            `Upvoted @${handle} (${data.profile.votes} votes)! Upvote ${rem} more ${
+              rem === 1 ? "user" : "users"
+            } to earn +1 Bonus Vote for @${activeMyHandle}!`
+          );
+        } else {
+          showToast(
+            `Upvoted @${handle}! Now at ${data.profile.votes} votes (Rank #${data.profile.clanRank}).`
+          );
+        }
       }
-    } catch {
-      setProfiles(prevProfiles);
-      setFeaturedProfile(prevFeatured);
-      setTotalVotes(prevTotalVotes);
+
+      if (data.snapshot) {
+        syncSnapshotToState(data.snapshot, true);
+      }
+    } catch (e) {
+      console.error("Failed to vote:", e);
     } finally {
       setVotingHandle(null);
     }
+  };
+
+  const handleInspectProfileFromLeaderboard = (profile: RankedArenaProfile) => {
+    setFeaturedProfile(profile);
+    featuredProfileRef.current = profile;
+    setIsBattleMode(false);
+    setIsPublicVoteMode(true);
+    if (typeof window !== "undefined") {
+      const nextUrl = `${window.location.pathname}?u=${encodeURIComponent(
+        profile.handle
+      )}`;
+      window.history.pushState({}, "", nextUrl);
+    }
+    topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleStartBattleWithProfile = (targetProfile: RankedArenaProfile) => {
+    const activeMyHandle =
+      myHandle || featuredProfile?.handle || "pragmaticengineer";
+    const fighter1 =
+      activeMyHandle.toLowerCase() !== targetProfile.handle.toLowerCase()
+        ? activeMyHandle
+        : profiles[0]?.handle !== targetProfile.handle
+        ? profiles[0]?.handle || "pragmaticengineer"
+        : "aarav";
+
+    startHeadToHeadBattle(
+      fighter1,
+      targetProfile.handle,
+      battleHours,
+      Date.now(),
+      profiles,
+      true,
+      true
+    );
   };
 
   const fighterAProfile =
     profiles.find(
       (p) => p.handle.toLowerCase() === battleHandles[0].toLowerCase()
     ) ||
+    battleProfilesMap[battleHandles[0].toLowerCase()] ||
+    featuredProfile ||
     profiles[0] ||
-    featuredProfile;
+    null;
 
   const fighterBProfile =
     profiles.find(
       (p) => p.handle.toLowerCase() === battleHandles[1].toLowerCase()
     ) ||
-    profiles.find((p) => p.handle !== fighterAProfile?.handle) ||
+    battleProfilesMap[battleHandles[1].toLowerCase()] ||
+    profiles.find(
+      (p) => p.handle.toLowerCase() !== (fighterAProfile?.handle || "")
+    ) ||
+    profiles[1] ||
     profiles[0] ||
-    featuredProfile;
+    null;
+
+  const effectiveMyHandle = myHandle || featuredProfile?.handle || "";
+  const myActiveBattlesCount = activeBattles.filter(
+    (b) =>
+      effectiveMyHandle &&
+      (b.handleA.toLowerCase() === effectiveMyHandle.toLowerCase() ||
+        b.handleB.toLowerCase() === effectiveMyHandle.toLowerCase())
+  ).length;
+
+  const progressInCycle = othersVotedCount % 3;
+  const votesNeededForNextBonus = 3 - progressInCycle;
 
   return (
-    <div className="relative min-h-screen pb-24 sm:pb-16 overflow-x-hidden flex flex-col justify-between">
-      {/* Full-Screen Diwali Illustration Backdrop */}
+    <div className="relative min-h-screen text-amber-50 pb-20 overflow-x-hidden">
+      <ClientErrorReporter />
+
+      {/* Background Artwork Layer */}
       <div
-        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+        className="fixed inset-0 z-0 pointer-events-none"
         style={{
           backgroundImage: `url('/api/bg-image')`,
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
         }}
       />
-      <div className="fixed inset-0 z-0 bg-gradient-to-b from-[#2B071E]/75 via-[#2B071E]/50 to-[#16020F]/90" />
+      <div
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 18%, rgba(45, 6, 30, 0.30) 0%, rgba(28, 3, 19, 0.78) 65%, rgba(16, 2, 11, 0.94) 100%)",
+        }}
+      />
 
-      <FireworkBackground />
       <DiwaliDecorationLights />
+      <FireworkBackground />
 
       {/* Floating Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-[#FFE600] text-[#380828] font-black text-xs sm:text-sm border-2 border-[#4A1238] shadow-2xl max-w-[92vw] text-center">
-          {toastMsg}
+        <div className="fixed bottom-5 right-4 left-4 sm:left-auto z-50 max-w-md bg-[#2A061D] border-2 border-[#FFE600] text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-[#FFE600] shrink-0" />
+          <span className="text-xs sm:text-sm font-extrabold">{toastMsg}</span>
         </div>
       )}
 
-      {/* Upgraded Multi-Tab Interactive User Manual Modal */}
+      {/* SIMPLIFIED USER MANUAL MODAL */}
       {showUserGuideModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-6">
-          <div className="bg-[#240418] border-2 border-[#FFE600] rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-7 shadow-[0_25px_70px_rgba(0,0,0,0.9)] space-y-4">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#FFE600]/25">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#FFE600] to-[#FF7B00] text-[#380828] flex items-center justify-center shadow">
-                  <BookOpen className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-2xl font-black text-white">
-                    Rate My Patakha — Official User Manual
-                  </h2>
-                  <p className="text-[11px] sm:text-xs text-amber-200/80 font-semibold">
-                    Create cards, frame your Photo/Rangoli, browse clans & tag
-                    friends in 1v1 battles
-                  </p>
-                </div>
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+          onClick={() => setShowUserGuideModal(false)}
+        >
+          <div
+            className="w-full max-w-3xl bg-[#240418] border-2 border-[#FFE600] rounded-3xl p-4 sm:p-7 shadow-[0_24px_70px_rgba(0,0,0,0.9)] space-y-5 my-auto max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#FFE600]/30">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-[#FFE600] text-[#380828] text-xs font-black uppercase">
+                  Simple User Guide
+                </span>
+                <h2 className="text-lg sm:text-2xl font-black text-white">
+                  🧨 How Rate My Patakha Works
+                </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setShowUserGuideModal(false)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] transition shrink-0"
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#FFE600] transition"
+                aria-label="Close guide"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* 4 Interactive Guide Tabs */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-[#14020E] p-1.5 rounded-2xl border border-[#FFE600]/35">
+            {/* Interactive Guide Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-[#13010C] p-1.5 rounded-2xl border border-[#FFE600]/35">
               <button
                 type="button"
                 onClick={() => setActiveGuideTab("quickstart")}
@@ -610,8 +1012,8 @@ export default function PatakhaArenaClient() {
                     : "text-amber-200 hover:text-white"
                 }`}
               >
-                <Zap className="w-3.5 h-3.5 shrink-0" />
-                <span>1. Quick Start</span>
+                <Zap className="w-3.5 h-3.5" />
+                <span>1. Cracker Card</span>
               </button>
 
               <button
@@ -623,8 +1025,8 @@ export default function PatakhaArenaClient() {
                     : "text-amber-200 hover:text-white"
                 }`}
               >
-                <Swords className="w-3.5 h-3.5 shrink-0" />
-                <span>2. Tag & Battle</span>
+                <Swords className="w-3.5 h-3.5" />
+                <span>2. 1v1 Battles</span>
               </button>
 
               <button
@@ -636,680 +1038,829 @@ export default function PatakhaArenaClient() {
                     : "text-amber-200 hover:text-white"
                 }`}
               >
-                <Camera className="w-3.5 h-3.5 shrink-0" />
-                <span>3. Photo & Rangoli</span>
+                <Camera className="w-3.5 h-3.5" />
+                <span>3. Photo Frames</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setActiveGuideTab("perks")}
+                onClick={() => setActiveGuideTab("finale")}
                 className={`py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition ${
-                  activeGuideTab === "perks"
+                  activeGuideTab === "finale"
                     ? "bg-[#FFE600] text-[#380828] shadow"
                     : "text-amber-200 hover:text-white"
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span>4. Clans & Boost</span>
+                <Gift className="w-3.5 h-3.5" />
+                <span>4. +1 Bonus Rule</span>
               </button>
             </div>
 
-            {/* TAB 1: QUICK START */}
             {activeGuideTab === "quickstart" && (
-              <div className="space-y-3 text-xs sm:text-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 space-y-1.5">
-                    <span className="inline-block px-2 py-0.5 rounded-md bg-[#FFE600] text-[#380828] font-black text-[10px]">
-                      STEP 1
-                    </span>
-                    <div className="font-black text-white text-sm">
-                      Enter Your @Username
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      Type your handle (e.g., <strong>@rohan</strong>) or paste
-                      your profile link. Our database checks in real time if you
-                      already have a registered card or creates a brand-new one!
-                    </p>
+              <div className="space-y-3 text-xs sm:text-sm text-amber-100/95">
+                <div className="bg-[#16020F] border border-[#FFE600]/40 rounded-2xl p-4 space-y-2">
+                  <div className="text-[#FFE600] font-black text-sm flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4" />
+                    Step-by-Step: Create & Share Your Cracker Card
                   </div>
-
-                  <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 space-y-1.5">
-                    <span className="inline-block px-2 py-0.5 rounded-md bg-[#FFE600] text-[#380828] font-black text-[10px]">
-                      STEP 2
-                    </span>
-                    <div className="font-black text-white text-sm">
-                      Download Anytime (Unlimited)
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      Tap <strong>Download Poster</strong> as many times as you
-                      want to export a crisp 1080×1350 HD PNG with your live
-                      Clan Rank!
-                    </p>
-                  </div>
-
-                  <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 space-y-1.5">
-                    <span className="inline-block px-2 py-0.5 rounded-md bg-[#FFE600] text-[#380828] font-black text-[10px]">
-                      STEP 3
-                    </span>
-                    <div className="font-black text-white text-sm">
-                      Share Your Voting Link
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      Send your <code>/?u=yourname</code> link to friends. They
-                      land on a <strong>Read-Only Voting Spotlight</strong>{" "}
-                      where they can upvote you in 1 tap!
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: HOW TO PLAY 1v1 BATTLE BY TAGGING FRIENDS */}
-            {activeGuideTab === "battle-tagging" && (
-              <div className="space-y-3.5 text-xs sm:text-sm">
-                <div className="bg-gradient-to-r from-[#380828] to-[#240418] border-2 border-[#FFE600]/60 rounded-2xl p-4 space-y-2">
-                  <div className="font-black text-[#FFE600] text-sm sm:text-base flex items-center gap-1.5">
-                    <AtSign className="w-4 h-4 text-emerald-400" />
-                    How to Play a 1v1 Rivalry Battle by Tagging Friends
-                  </div>
-                  <ol className="list-decimal list-inside space-y-2 text-amber-100/90 leading-relaxed">
+                  <ol className="list-decimal list-inside space-y-1.5 text-amber-100/90">
                     <li>
-                      Open the <strong>⚔️ 1v1 Battle</strong> tab (or click the{" "}
-                      <strong>⚔️ 1v1</strong> button next to anyone in the Clan
-                      Browser or Leaderboard).
+                      <strong>Enter Your @Username</strong>: Type your handle
+                      (like <code className="text-[#FFE600]">@rohan</code>) in
+                      the top box and tap{" "}
+                      <strong>&ldquo;Generate My Cracker Card&rdquo;</strong>.
                     </li>
                     <li>
-                      Click <strong>Customize Battle & Days</strong>, enter your{" "}
-                      <strong>@username</strong> vs your friend&apos;s{" "}
-                      <strong>@username</strong>, and set your{" "}
-                      <strong>Custom Number of Days (1 to 90 Days)</strong>!
+                      <strong>Get Your Clan & Rank</strong>: You are matched
+                      with a Patakha Clan and placed on the live Leaderboard.
                     </li>
                     <li>
-                      Click <strong>Download 1v1 VS Poster PNG</strong> to save
-                      the side-by-side matchup poster, then click{" "}
-                      <strong>Copy @Tag Challenge Text</strong> (or{" "}
-                      <strong>Tag on X / WhatsApp</strong>).
-                    </li>
-                    <li>
-                      Post the poster on Instagram Stories, X/Twitter, Substack
-                      Notes, or WhatsApp and{" "}
-                      <strong className="text-[#FFE600]">
-                        tag your rival (@friend)
-                      </strong>{" "}
-                      so both audiences can vote before the countdown timer ends!
+                      <strong>Download & Share</strong>: Tap{" "}
+                      <strong>&ldquo;Download Poster&rdquo;</strong> to save
+                      your HD PNG card, and send your voting link (
+                      <code className="text-[#FFE600]">/?u=yourname</code>) to
+                      friends so they can upvote you!
                     </li>
                   </ol>
                 </div>
               </div>
             )}
 
-            {/* TAB 3: PHOTO, RANGOLI & WOODEN FRAMES (WITH PRIVACY/DOWNLOAD NOTE) */}
+            {activeGuideTab === "battle-tagging" && (
+              <div className="space-y-3 text-xs sm:text-sm text-amber-100/95">
+                <div className="bg-[#16020F] border border-[#FFE600]/45 rounded-2xl p-4 space-y-2.5">
+                  <div className="text-[#FFE600] font-black text-sm flex items-center gap-1.5">
+                    <AtSign className="w-4 h-4 text-emerald-400" />
+                    How Live 1v1 Battles & Multi-Battle Tracking Work
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 text-amber-100/90">
+                    <li>
+                      <strong>Start Any 1v1 Battle</strong>: Click{" "}
+                      <strong>&ldquo;⚔️ 1v1 Battle&rdquo;</strong> at the top or
+                      click the <strong>1v1</strong> button next to any user on
+                      the Leaderboard.
+                    </li>
+                    <li>
+                      <strong>Pick Hours (1 to 48 Hours)</strong>: Choose how
+                      many hours the battle should run and click{" "}
+                      <strong>Launch</strong>. Your battle is saved in the live
+                      database so everyone on the site can see it!
+                    </li>
+                    <li>
+                      <strong>Track All Your Active Battles</strong>: The{" "}
+                      <strong>Live 1v1 Battle Command Center</strong> shows
+                      exactly how many battles you are playing, against whom,
+                      each battle&apos;s live countdown, and whether you are{" "}
+                      <strong>Winning or Trailing</strong>!
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
             {activeGuideTab === "frames" && (
-              <div className="space-y-3 text-xs sm:text-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 space-y-1.5">
-                    <div className="font-black text-[#FFE600]">
-                      📸 Upload Your Photo, Rangoli or Diyas
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      In the <strong>Wooden Frames</strong> tab, you can upload{" "}
-                      <strong>
-                        your portrait, your Rangoli design, glowing Diyas, or
-                        any festive photograph
-                      </strong>{" "}
-                      into our Engraved Oak Wood, Crimson Palace Arch, or
-                      Marigold Ring frames!
-                    </p>
+              <div className="space-y-3 text-xs sm:text-sm text-amber-100/95">
+                <div className="bg-[#16020F] border border-[#FFE600]/40 rounded-2xl p-4 space-y-2">
+                  <div className="text-[#FFE600] font-black text-sm flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    How to Frame Your Photo or Rangoli (Live Text on Image)
                   </div>
-
-                  <div className="bg-amber-950/85 border-2 border-[#FFE600] rounded-2xl p-4 space-y-1.5">
-                    <div className="font-black text-[#FFE600] flex items-center gap-1.5">
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span>Please Download First Before Sharing Link!</span>
-                    </div>
-                    <p className="text-amber-100/95 leading-relaxed">
-                      For your privacy,{" "}
-                      <strong>
-                        your uploaded photo/Rangoli is NOT stored on our servers
-                        and will NOT be shown when someone opens your shareable
-                        voting link
-                      </strong>
-                      . Always click <strong>Download Poster</strong> first (you
-                      can download unlimited times anytime!) and share that
-                      downloaded image alongside your voting link!
-                    </p>
-                  </div>
+                  <ul className="list-disc list-inside space-y-1.5 text-amber-100/90">
+                    <li>
+                      Open the <strong>&ldquo;📷 Photo / Rangoli Frame&rdquo;</strong>{" "}
+                      tab and upload your photo, selfie, or Rangoli.
+                    </li>
+                    <li>
+                      Choose from 4 handcrafted frames (Engraved Oak Wood,
+                      Crimson Palace Arch, Marigold Ring, or Golden Polaroid).
+                    </li>
+                    <li>
+                      <strong>100% Live Canvas Text</strong>: Your{" "}
+                      <code className="text-[#FFE600]">@username</code>,{" "}
+                      <code className="text-[#FFE600]">Greeting Title</code>,{" "}
+                      <code className="text-[#FFE600]">Rank</code>, and{" "}
+                      <code className="text-[#FFE600]">Votes</code> are drawn
+                      live onto the frame image as you type or receive votes!
+                    </li>
+                    <li>
+                      <strong>Privacy First — Download Your Poster</strong>:
+                      Your personal photo never leaves your device. Tap{" "}
+                      <strong>&ldquo;1. Download Poster&rdquo;</strong> first,
+                      and share that image along with your voting link!
+                    </li>
+                  </ul>
                 </div>
               </div>
             )}
 
-            {/* TAB 4: BROWSE CLANS, HOURLY AUTO-BOOST & FAIR PLAY */}
-            {activeGuideTab === "perks" && (
-              <div className="space-y-3 text-xs sm:text-sm">
-                <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 flex items-start gap-3">
-                  <Compass className="w-5 h-5 text-[#FFE600] shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <div className="font-black text-[#FFE600]">
-                      🧭 Browse Other Users&apos; Clans & Rosters
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      Scroll to <strong>Explore Patakha Clans</strong> and tap
-                      any Clan card to inspect its live member roster, see who
-                      holds Rank #1 in that clan, view their card, or challenge
-                      them to a 1v1 Battle!
-                    </p>
+            {activeGuideTab === "finale" && (
+              <div className="space-y-3 text-xs sm:text-sm text-amber-100/95">
+                <div className="bg-[#16020F] border border-[#FFE600]/45 rounded-2xl p-4 space-y-2">
+                  <div className="text-[#FFE600] font-black text-sm flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-emerald-400" />
+                    Three Votes to Others = +1 Bonus Vote to Your Own Score!
                   </div>
-                </div>
-
-                <div className="bg-emerald-950/75 border border-emerald-400/50 rounded-2xl p-4 flex items-start gap-3">
-                  <Clock className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <div className="font-black text-emerald-300">
-                      ⚡ Hourly Community Momentum Boost (Never Stuck!)
-                    </div>
-                    <p className="text-emerald-100/90 leading-relaxed">
-                      If any registered user goes more than{" "}
-                      <strong>1 hour</strong> without receiving a new upvote,
-                      our Arena Momentum Engine automatically boosts their card
-                      by <strong>+1 upvote per idle hour</strong> so every
-                      creator feels continuous engagement!
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-[#15020E] border border-[#FFE600]/40 rounded-2xl p-4 flex items-start gap-3">
-                  <ShieldCheck className="w-5 h-5 text-[#FFE600] shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <div className="font-black text-[#FFE600]">
-                      🔒 Locked Cards & Anti-Spam Voting
-                    </div>
-                    <p className="text-amber-100/85 leading-relaxed">
-                      Once a username creates a Patakha Card, their clan is
-                      locked in MongoDB so visitors cannot overwrite it.
-                    </p>
-                  </div>
+                  <p className="text-amber-100/90 leading-relaxed">
+                    Every time you upvote <strong>3 other users</strong> on the
+                    Leaderboard, Clan list, or 1v1 Battles (3, 6, 9, 12...),{" "}
+                    <strong className="text-[#FFE600]">
+                      your own profile score automatically increases by +1 vote
+                      in real time!
+                    </strong>
+                  </p>
+                  <p className="text-amber-100/90 leading-relaxed pt-1">
+                    Plus, every registered user automatically receives{" "}
+                    <strong className="text-[#FFE600]">
+                      +1 vote every hour
+                    </strong>
+                    , and the <strong>Overall #1 Leaderboard Winner</strong>{" "}
+                    will be crowned in <strong>1 Week</strong>!
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* Modal Footer */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
-              <a
-                href="mailto:rahulkcoding2023@gmail.com"
-                className="text-xs font-bold text-amber-200 hover:text-[#FFE600] inline-flex items-center gap-1.5"
-              >
-                <Mail className="w-3.5 h-3.5 text-[#FFE600]" />
-                <span>Feedback / Collab: rahulkcoding2023@gmail.com</span>
-              </a>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/15">
+              <div className="flex items-center gap-3">
+                <a
+                  href="https://github.com/SavantCode/rateMyPatakha"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-extrabold text-[#FFE600] hover:underline inline-flex items-center gap-1"
+                >
+                  <Github className="w-3.5 h-3.5" />
+                  <span>GitHub Repository</span>
+                </a>
+                <a
+                  href="/audit"
+                  className="text-xs font-extrabold text-emerald-300 hover:underline inline-flex items-center gap-1"
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span>Developer Audit (/audit)</span>
+                </a>
+              </div>
 
               <button
                 type="button"
                 onClick={() => setShowUserGuideModal(false)}
-                className="px-6 py-2.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black text-xs sm:text-sm shadow"
+                className="px-5 py-2.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black text-xs sm:text-sm shadow-lg transition"
               >
-                Got It, Let&apos;s Play! 🧨
+                Got It, Let&apos;s Go! 🧨
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div>
-        {/* Header Bar with Live Visitor Counter */}
-        <header
-          ref={topStudioRef}
-          className="relative z-10 max-w-6xl mx-auto px-3 sm:px-6 pt-16 sm:pt-24 pb-2"
-        >
-          <div className="bg-[#28061C]/92 border-2 border-[#FFE600]/65 rounded-2xl sm:rounded-3xl px-3 sm:px-6 py-2.5 sm:py-3.5 shadow-xl backdrop-blur-md flex flex-wrap items-center justify-between gap-2">
-            <div
-              onClick={
-                isPublicVoteMode || isBattleMode
-                  ? exitSpecialModesToStudio
-                  : undefined
-              }
-              className={`flex items-center gap-2.5 min-w-0 ${
-                isPublicVoteMode || isBattleMode ? "cursor-pointer" : ""
-              }`}
-            >
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#FFE600] via-[#FF9F1C] to-[#EF233C] flex items-center justify-center text-lg sm:text-2xl shadow border-2 border-[#4A1238] shrink-0">
-                🧨
+      {/* Main Content Container */}
+      <div
+        ref={topStudioRef}
+        className="relative z-20 max-w-6xl mx-auto px-3 sm:px-6 pt-14 sm:pt-20 md:pt-24 space-y-5 sm:space-y-8"
+      >
+        {/* Top Compact Festival Header Card */}
+        <header className="text-center space-y-3">
+          <div className="inline-block w-full max-w-3xl mx-auto bg-gradient-to-b from-[#430A2E]/95 via-[#2C061E]/95 to-[#1D0313]/95 px-3.5 sm:px-7 py-3.5 sm:py-5 rounded-3xl matchbox-border backdrop-blur-md">
+            {/* Top Pills Row */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 mb-2">
+              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FFE600] text-[#3B0726] text-[10px] sm:text-xs font-black uppercase tracking-wider shadow">
+                <Sparkles className="w-3 h-3 fill-current" />
+                Shubh Diwali Arena
               </div>
-              <div className="min-w-0">
-                <h1 className="text-base sm:text-2xl font-black text-white leading-tight truncate">
-                  Rate My <span className="gold-shimmer">Patakha</span>
-                </h1>
-                <p className="text-[10px] sm:text-xs text-amber-200 font-semibold truncate">
-                  {isBattleMode && fighterAProfile && fighterBProfile
-                    ? `⚔️ ${battleDays}d Battle: @${fighterAProfile.handle} vs @${fighterBProfile.handle}`
-                    : isPublicVoteMode && featuredProfile
-                    ? `Official Voting Page for @${featuredProfile.handle}`
-                    : `${clans.length} Cracker Clans • Photo/Rangoli Frames • 1v1 Battles`}
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-extrabold shrink-0">
+              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#15020F]/90 border border-[#FFE600]/60 text-[#FFE600] text-[10px] sm:text-xs font-black uppercase tracking-wider">
+                <Eye className="w-3 h-3 text-emerald-400" />
+                <span>{visitorCount.toLocaleString()} Visitors</span>
+              </div>
+
+              {/* 3-Vote Bonus Progress Pill */}
               <div
-                className="px-2.5 py-1.5 rounded-xl bg-[#16020F]/90 border border-emerald-400/45 flex items-center gap-1 text-emerald-300"
-                title="Total Website Visitors"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/60 text-emerald-300 text-[10px] sm:text-xs font-black"
+                title="Upvote 3 other users to automatically earn +1 Bonus Vote for your own profile!"
               >
-                <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{visitorCount.toLocaleString()}</span>
-                <span className="hidden md:inline">Visitors</span>
-              </div>
-
-              <div className="px-2.5 py-1.5 rounded-xl bg-[#16020F]/90 border border-[#FFE600]/40 flex items-center gap-1 text-amber-200">
-                <Users className="w-3.5 h-3.5 text-[#FFE600]" />
-                <span>{totalCreators}</span>
-              </div>
-
-              <div className="px-2.5 py-1.5 rounded-xl bg-[#16020F]/90 border border-orange-400/40 flex items-center gap-1 text-orange-200">
-                <Flame className="w-3.5 h-3.5 text-orange-400" />
-                <span>{totalVotes}</span>
+                <Gift className="w-3 h-3 text-[#FFE600]" />
+                <span>3 Votes to Others = +1 Self Bonus ({progressInCycle}/3)</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  categoriesSectionRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                  });
+                  if (isBattleMode) {
+                    setIsBattleMode(false);
+                    if (typeof window !== "undefined") {
+                      window.history.pushState({}, "", window.location.pathname);
+                    }
+                  } else {
+                    const fA =
+                      effectiveMyHandle ||
+                      profiles[0]?.handle ||
+                      "pragmaticengineer";
+                    const fB =
+                      profiles.find(
+                        (p) => p.handle.toLowerCase() !== fA.toLowerCase()
+                      )?.handle || "aarav";
+                    startHeadToHeadBattle(
+                      fA,
+                      fB,
+                      battleHours,
+                      Date.now(),
+                      profiles,
+                      false,
+                      false
+                    );
+                  }
                 }}
-                className="hidden md:inline-flex px-2.5 py-1.5 rounded-xl bg-[#16020F]/90 hover:bg-white/15 border border-[#FFE600]/45 text-amber-100 items-center gap-1 transition"
-                title="Browse All Patakha Clans & Members"
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider border transition ${
+                  isBattleMode
+                    ? "bg-[#FFE600] text-[#380828] border-white shadow"
+                    : "bg-[#15020F]/90 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border-[#FFE600]/60"
+                }`}
               >
-                <Compass className="w-3.5 h-3.5 text-[#FFE600]" />
-                <span>Browse Clans</span>
+                <Swords className="w-3 h-3" />
+                <span>
+                  {isBattleMode
+                    ? "Exit 1v1 Battle"
+                    : myActiveBattlesCount > 0
+                    ? `1v1 Battles (${myActiveBattlesCount} Active)`
+                    : "⚔️ 1v1 Battle"}
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowUserGuideModal(true)}
-                className="px-2.5 py-1.5 rounded-xl bg-[#16020F]/90 hover:bg-[#FFE600] border border-[#FFE600]/55 text-[#FFE600] hover:text-[#380828] font-black inline-flex items-center gap-1 transition"
-                title="Open User Manual & Battle Tagging Guide"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] border border-[#FFE600]/50 text-[10px] sm:text-xs font-black uppercase tracking-wider transition"
               >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>Manual</span>
+                <HelpCircle className="w-3 h-3" />
+                <span>How It Works</span>
+              </button>
+            </div>
+
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight leading-none">
+              <span className="gold-shimmer drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]">
+                RATE MY PATAKHA
+              </span>
+            </h1>
+
+            <p className="text-xs sm:text-sm text-amber-100/95 max-w-xl mx-auto font-semibold mt-1.5 leading-snug">
+              Generate your{" "}
+              <span className="text-[#FFE600] font-extrabold">
+                Cracker Card
+              </span>
+              , frame your{" "}
+              <span className="text-[#FFE600] font-extrabold">
+                Photo or Rangoli
+              </span>
+              , or challenge friends in a{" "}
+              <span className="text-[#FFE600] font-extrabold">
+                Live 1v1 Battle
+              </span>
+              !{" "}
+              <span className="text-emerald-300 font-extrabold">
+                (Upvote 3 others = +1 Bonus Vote for you!)
+              </span>
+            </p>
+
+            {/* Compact 4-Stat Pill Bar */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5">
+              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
+                <Zap className="w-3.5 h-3.5 text-[#FFE600]" />
+                <span className="text-xs font-black text-white">
+                  {clans.length || 7}
+                </span>
+                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
+                  Clans
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
+                <Users className="w-3.5 h-3.5 text-amber-300" />
+                <span className="text-xs font-black text-white">
+                  {totalCreators}
+                </span>
+                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
+                  Users
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-[#1B0312]/90 border border-[#FFE600]/45 px-2.5 py-1 rounded-xl">
+                <Flame className="w-3.5 h-3.5 text-orange-400" />
+                <span className="text-xs font-black text-[#FFE600]">
+                  {totalVotes}
+                </span>
+                <span className="text-[10px] uppercase text-amber-200/80 font-bold">
+                  Live Votes
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  categoriesSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+                }
+                className="flex items-center gap-1 bg-[#1B0312]/90 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/45 px-2.5 py-1 rounded-xl text-xs font-black transition"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Browse Clans ↓</span>
               </button>
 
-              {isPublicVoteMode || isBattleMode ? (
-                <button
-                  type="button"
-                  onClick={exitSpecialModesToStudio}
-                  className="inline-flex px-3 sm:px-3.5 py-1.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black border-2 border-[#4A1238] shadow transition items-center gap-1"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">Create Yours</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const a =
-                      featuredProfile?.handle ||
-                      profiles[0]?.handle ||
-                      "pragmaticengineer";
-                    const b =
-                      profiles.find((p) => p.handle !== a)?.handle || "aarav";
-                    startHeadToHeadBattle(a, b, battleDays);
-                  }}
-                  className="hidden sm:inline-flex px-3.5 py-1.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black border-2 border-[#4A1238] shadow transition items-center gap-1.5"
-                >
-                  <Swords className="w-3.5 h-3.5" />
-                  <span>1v1 Battle</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() =>
+                  leaderboardSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+                }
+                className="flex items-center gap-1 bg-[#FFE600] hover:bg-amber-300 text-[#380828] px-2.5 py-1 rounded-xl text-xs font-black transition shadow"
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Leaderboard ↓</span>
+              </button>
             </div>
           </div>
+        </header>
 
-          {/* Live Community Activity Ticker */}
-          {recentEvents.length > 0 && (
-            <div className="mt-2 bg-[#1B0312]/90 border border-[#FFE600]/35 rounded-xl px-3 py-1.5 flex items-center gap-2 overflow-x-auto no-scrollbar text-[11px]">
-              <span className="inline-flex items-center gap-1 font-black uppercase text-[#FFE600] shrink-0">
-                <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                Live Arena:
+        {/* Live Arena Activity Ticker */}
+        {recentEvents.length > 0 && (
+          <div className="max-w-4xl mx-auto space-y-2">
+            <div className="bg-[#180210]/90 border border-[#FFE600]/35 rounded-2xl px-3.5 py-2 flex items-center gap-2.5 overflow-x-auto no-scrollbar">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider shrink-0">
+                <Activity className="w-3 h-3 animate-pulse" />
+                Live Feed
               </span>
-              <div className="flex items-center gap-3 shrink-0">
-                {recentEvents.slice(0, 6).map((ev) => (
+              <div className="flex items-center gap-4 text-xs font-bold text-amber-100/90 whitespace-nowrap">
+                {recentEvents.slice(0, 7).map((ev) => (
                   <button
                     key={ev.id}
                     type="button"
                     onClick={() => {
+                      if (ev.type === "battle" && ev.rivalHandle) {
+                        startHeadToHeadBattle(
+                          ev.handle,
+                          ev.rivalHandle,
+                          ev.battleHours || 12,
+                           undefined,
+                          profiles,
+                          true,
+                          false
+                        );
+                        return;
+                      }
                       const found = profiles.find(
                         (p) =>
                           p.handle.toLowerCase() === ev.handle.toLowerCase()
                       );
-                      if (found) {
-                        setFeaturedProfile(found);
-                        setIsBattleMode(false);
-                        setIsPublicVoteMode(true);
-                      }
+                      if (found) handleInspectProfileFromLeaderboard(found);
                     }}
-                    className="inline-flex items-center gap-1 text-amber-100 hover:text-[#FFE600] transition shrink-0"
+                    className="inline-flex items-center gap-1 hover:text-[#FFE600] transition"
                   >
-                    <span>{ev.type === "vote" ? "🔥" : "🧨"}</span>
-                    <strong className="text-white">@{ev.handle}</strong>
-                    <span className="text-amber-200/75">
-                      {ev.type === "vote"
-                        ? `upvoted (${ev.votes})`
-                        : `joined ${ev.patakhaName}`}
-                    </span>
+                    <span>{ev.patakhaEmoji}</span>
+                    {ev.type === "battle" && ev.rivalHandle ? (
+                      <>
+                        <span className="font-black text-[#FFE600]">
+                          @{ev.handle} vs @{ev.rivalHandle}
+                        </span>
+                        <span className="text-rose-300">
+                          started a {ev.battleHours || 12}h 1v1 Battle!
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-black text-white">
+                          @{ev.handle}
+                        </span>
+                        <span className="text-amber-200/70">
+                          {ev.type === "vote"
+                            ? `reached ${ev.votes} votes`
+                            : `joined ${ev.patakhaName}`}
+                        </span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
-          )}
-        </header>
+          </div>
+        )}
 
-        {/* Main Content Container */}
-        <main className="relative z-10 max-w-6xl mx-auto px-3 sm:px-6 pt-2 sm:pt-3 space-y-6 sm:space-y-10">
-          {isBattleMode && fighterAProfile && fighterBProfile ? (
-            <HeadToHeadBattle
-              fighterA={fighterAProfile}
-              fighterB={fighterBProfile}
-              allProfiles={profiles}
-              battleDays={battleDays}
-              battleStartMs={battleStartMs}
-              onVote={handleVote}
-              votedHandles={votedHandles}
-              votingHandle={votingHandle}
-              onChangeMatchup={(a, b, customDays) =>
-                startHeadToHeadBattle(
-                  a,
-                  b,
-                  customDays ?? battleDays,
-                  Date.now()
-                )
-              }
-              onExitToStudio={exitSpecialModesToStudio}
-            />
-          ) : isPublicVoteMode && featuredProfile ? (
-            <PublicVoteSpotlight
-              profile={featuredProfile}
-              allProfiles={profiles}
-              onVote={handleVote}
-              hasVoted={votedHandles.has(featuredProfile.handle.toLowerCase())}
-              isVoting={votingHandle === featuredProfile.handle}
-              onSwitchToCreatorStudio={exitSpecialModesToStudio}
-              onScrollToLeaderboard={() =>
-                leaderboardSectionRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                })
-              }
-              onStartRivalryBattle={(a, b) =>
-                startHeadToHeadBattle(a, b, battleDays, Date.now())
-              }
-            />
-          ) : (
-            <>
-              {/* 4-Action Mode Switcher (Cracker Card, Photo/Rangoli Frames, 1v1 Battle, Browse Clans) */}
-              <div className="flex justify-center">
-                <div className="grid grid-cols-2 sm:grid-cols-4 w-full sm:w-auto bg-[#1D0414]/95 border-2 border-[#FFE600]/70 p-1 rounded-2xl shadow-xl backdrop-blur-md gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setActiveStudioTab("patakha-card")}
-                    className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm transition ${
-                      activeStudioTab === "patakha-card"
-                        ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
-                        : "text-amber-100 hover:bg-white/10"
-                    }`}
-                  >
-                    <span>🧨</span>
-                    <span className="truncate">Cracker Card</span>
-                  </button>
+        {/* MY ACTIVE 1v1 BATTLES & LIVE COUNTDOWN COMMAND CENTER */}
+        <MyActiveBattlesPanel
+          currentHandle={effectiveMyHandle}
+          activeBattles={activeBattles}
+          allProfiles={profiles}
+          activeBattlePair={battleHandles}
+          isBattleMode={isBattleMode}
+          onSelectBattle={(handleA, handleB, hrs, sMs) =>
+            startHeadToHeadBattle(
+              handleA,
+              handleB,
+              hrs,
+              sMs,
+              profiles,
+              true,
+              false
+            )
+          }
+          onVote={handleVote}
+          votedHandles={votedHandles}
+          votingHandle={votingHandle}
+          onStartNewBattleWithRival={(me, rival) =>
+            startHeadToHeadBattle(
+              me,
+              rival,
+              battleHours,
+              Date.now(),
+              profiles,
+              true,
+              true
+            )
+          }
+        />
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveStudioTab("snap-frame")}
-                    className={`inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm transition ${
-                      activeStudioTab === "snap-frame"
-                        ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow"
-                        : "text-amber-100 hover:bg-white/10"
-                    }`}
-                  >
-                    <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                    <span className="truncate">Photo / Rangoli Frame</span>
-                  </button>
+        {/* CONDITIONAL HERO AREA:
+            1) 1v1 HEAD-TO-HEAD RIVALRY BATTLE MODE (`/?vs=user1,user2&hours=12`)
+            2) DEDICATED PUBLIC VOTING SPOTLIGHT (`/?u=username`)
+            3) CREATOR STUDIO (Cracker Card + Wooden Frame Studio) */}
+        {isBattleMode && fighterAProfile && fighterBProfile ? (
+          <HeadToHeadBattle
+            fighterA={fighterAProfile}
+            fighterB={fighterBProfile}
+            allProfiles={profiles}
+            activeBattles={activeBattles}
+            battleHours={battleHours}
+            battleStartMs={battleStartMs}
+            onVote={handleVote}
+            votedHandles={votedHandles}
+            votingHandle={votingHandle}
+            onChangeMatchup={(a, b, hrs, forceUpdate) =>
+              startHeadToHeadBattle(
+                a,
+                b,
+                hrs ?? battleHours,
+                forceUpdate ? Date.now() : battleStartMs,
+                profiles,
+                false,
+                Boolean(forceUpdate)
+              )
+            }
+            onExitToStudio={exitSpecialModesToStudio}
+          />
+        ) : isPublicVoteMode && featuredProfile ? (
+          <PublicVoteSpotlight
+            profile={featuredProfile}
+            allProfiles={profiles}
+            onVote={handleVote}
+            hasVoted={votedHandles.has(featuredProfile.handle.toLowerCase())}
+            isVoting={votingHandle === featuredProfile.handle}
+            onSwitchToCreatorStudio={exitSpecialModesToStudio}
+            onScrollToLeaderboard={() =>
+              leaderboardSectionRef.current?.scrollIntoView({
+                behavior: "smooth",
+              })
+            }
+            onStartRivalryBattle={(a, b) =>
+              startHeadToHeadBattle(
+                a,
+                b,
+                battleHours,
+                Date.now(),
+                profiles,
+                true,
+                true
+              )
+            }
+          />
+        ) : (
+          <>
+            {/* Mode Switcher Tabs */}
+            <div className="max-w-xl mx-auto">
+              <div className="grid grid-cols-3 gap-1.5 bg-[#220416]/95 p-1.5 rounded-2xl border-2 border-[#FFE600]/80 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setActiveStudioTab("patakha-card")}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm transition-all ${
+                    activeStudioTab === "patakha-card"
+                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow-md"
+                      : "text-amber-100 hover:bg-white/10"
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                  <span>🧨 Cracker Card</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const a =
-                        featuredProfile?.handle ||
-                        profiles[0]?.handle ||
-                        "pragmaticengineer";
-                      const b =
-                        profiles.find((p) => p.handle !== a)?.handle || "aarav";
-                      startHeadToHeadBattle(a, b, battleDays, Date.now());
-                    }}
-                    className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm text-amber-100 hover:bg-white/10 transition"
-                  >
-                    <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FFE600] shrink-0" />
-                    <span className="truncate">1v1 Battle</span>
-                  </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveStudioTab("snap-frame")}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm transition-all ${
+                    activeStudioTab === "snap-frame"
+                      ? "bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] shadow-md"
+                      : "text-amber-100 hover:bg-white/10"
+                  }`}
+                >
+                  <Camera className="w-4 h-4 shrink-0" />
+                  <span>📷 Photo Frame</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      categoriesSectionRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                      });
-                    }}
-                    className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm text-amber-100 hover:bg-white/10 transition"
-                  >
-                    <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FFE600] shrink-0" />
-                    <span className="truncate">Browse Clans</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fA =
+                      effectiveMyHandle ||
+                      profiles[0]?.handle ||
+                      "pragmaticengineer";
+                    const fB =
+                      profiles.find(
+                        (p) => p.handle.toLowerCase() !== fA.toLowerCase()
+                      )?.handle || "aarav";
+                    startHeadToHeadBattle(
+                      fA,
+                      fB,
+                      battleHours,
+                      Date.now(),
+                      profiles,
+                      false,
+                      false
+                    );
+                  }}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl font-black text-xs sm:text-sm text-amber-100 hover:bg-[#FFE600] hover:text-[#380828] transition-all"
+                >
+                  <Swords className="w-4 h-4 shrink-0" />
+                  <span>
+                    ⚔️ 1v1 Battle
+                    {myActiveBattlesCount > 0
+                      ? ` (${myActiveBattlesCount})`
+                      : ""}
+                  </span>
+                </button>
               </div>
+            </div>
 
-              {activeStudioTab === "patakha-card" ? (
-                <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-center">
-                  <div className="lg:col-span-6 bg-[#28061C]/92 border-2 border-[#FFE600]/75 rounded-3xl p-4 sm:p-7 shadow-2xl backdrop-blur-md space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFE600] text-[#380828] text-[11px] font-black uppercase tracking-wider">
-                        <Sparkles className="w-3 h-3 fill-current" />
-                        Diwali Cracker Card Studio
-                      </div>
+            {activeStudioTab === "patakha-card" ? (
+              <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
+                {/* Input Form Column */}
+                <div className="lg:col-span-6 bg-[#2B061E]/92 border-2 border-[#FFE600] rounded-3xl p-4 sm:p-7 shadow-2xl backdrop-blur-md space-y-4">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#FFE600]">
+                      <Flame className="w-4 h-4 text-orange-400" />
+                      Step 1: Enter Your Username or Profile Link
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-white">
+                      Which Diwali Patakha Are You?
+                    </h2>
+                    <p className="text-xs sm:text-sm text-amber-100/80">
+                      Type your{" "}
+                      <strong className="text-[#FFE600]">@username</strong> to
+                      generate your Cracker Card, or load your existing card &
+                      live rank if you already registered!
+                    </p>
+                  </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setActiveStudioTab("snap-frame")}
-                        className="text-[11px] font-extrabold text-[#FFE600] underline flex items-center gap-1"
-                      >
-                        <Camera className="w-3 h-3" /> Upload Photo / Rangoli →
-                      </button>
+                  <form onSubmit={handleAnalyzeSubmit} className="space-y-3">
+                    <div className="relative">
+                      <Search className="w-5 h-5 text-[#FFE600] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={urlOrHandle}
+                        onChange={(e) => setUrlOrHandle(e.target.value)}
+                        placeholder="Enter @username or substack.com/@username"
+                        className="w-full pl-11 pr-3.5 py-3.5 rounded-2xl bg-[#16020F] border-2 border-[#FFE600]/60 text-white placeholder:text-amber-200/45 focus:outline-none focus:border-[#FFE600] font-bold text-sm"
+                      />
                     </div>
 
-                    <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
-                      Get Your <span className="gold-shimmer">Cracker Card</span>{" "}
-                      & Shareable Voting Link 🧨
-                    </h2>
-
-                    <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
-                      Enter your username or paste your profile URL. Download
-                      your card unlimited times, browse other users&apos;{" "}
-                      <strong className="text-[#FFE600]">Patakha Clans</strong>,
-                      or tag a friend in a{" "}
-                      <strong className="text-[#FFE600]">
-                        custom-day 1v1 Battle
-                      </strong>
-                      !
-                    </p>
-
-                    <form onSubmit={handleAnalyzeSubmit} className="space-y-3">
-                      <div className="relative">
-                        <Search className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFE600] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          value={urlOrHandle}
-                          onChange={(e) => setUrlOrHandle(e.target.value)}
-                          placeholder="Type @username or paste profile URL..."
-                          className="w-full pl-10 sm:pl-12 pr-4 py-3 sm:py-3.5 rounded-2xl bg-[#14020E]/95 border-2 border-[#FFE600]/60 text-white placeholder:text-amber-200/45 font-bold focus:outline-none focus:border-[#FFE600] text-sm sm:text-base"
-                        />
-                      </div>
-
-                      {existingUserMatch && (
-                        <div className="bg-emerald-950/85 border border-emerald-400/50 rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs">
-                          <span className="text-emerald-200 font-bold flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span>
-                              <strong>@{existingUserMatch.handle}</strong>{" "}
-                              already made a card:{" "}
-                              <strong className="text-[#FFE600]">
-                                {existingUserMatch.patakhaEmoji}{" "}
-                                {existingUserMatch.patakhaName}
-                              </strong>{" "}
-                              (Rank #{existingUserMatch.clanRank} of{" "}
-                              {existingUserMatch.clanTotalCount})
-                            </span>
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black shrink-0">
-                            🔥 {existingUserMatch.votes}
-                          </span>
+                    {/* REAL-TIME DB EXISTING USER DETECTOR BANNER */}
+                    {existingUserMatch && (
+                      <div className="bg-emerald-950/90 border-2 border-emerald-400 rounded-2xl p-3 flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={existingUserMatch.patakhaImageUrl}
+                            alt={existingUserMatch.patakhaName}
+                            className="w-10 h-10 rounded-xl object-cover border border-[#FFE600] bg-[#FFF6E3] shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-black uppercase text-emerald-300 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              Already Registered in Arena!
+                            </div>
+                            <div className="text-xs font-extrabold text-white truncate">
+                              @{existingUserMatch.handle} •{" "}
+                              {existingUserMatch.patakhaName} (Rank #
+                              {existingUserMatch.clanRank} • 🔥{" "}
+                              {existingUserMatch.votes})
+                            </div>
+                          </div>
                         </div>
-                      )}
 
-                      {errorMsg && (
-                        <div className="text-xs font-bold text-rose-200 bg-rose-950/90 border border-rose-400/60 rounded-xl px-3 py-2">
-                          ⚠️ {errorMsg}
-                        </div>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={isAnalyzing}
-                        className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] font-black text-sm sm:text-base border-2 border-[#4A1238] shadow-xl flex items-center justify-center gap-2 active:scale-[0.99] transition"
-                      >
-                        <Zap className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
-                        {isAnalyzing
-                          ? "Checking Database..."
-                          : existingUserMatch
-                          ? `Load @${existingUserMatch.handle}'s Registered Card (${existingUserMatch.patakhaName}) 🎯`
-                          : "Generate My Cracker Card 🧨"}
-                      </button>
-                    </form>
-
-                    <div className="pt-2 border-t border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-200/75 shrink-0">
-                        Registered Users:
-                      </span>
-                      {QUICK_SAMPLE_USERS.map((u) => (
                         <button
-                          key={u}
+                          type="button"
+                          onClick={() =>
+                            handleInspectProfileFromLeaderboard(
+                              existingUserMatch
+                            )
+                          }
+                          className="shrink-0 px-3 py-1.5 rounded-xl bg-[#FFE600] text-[#380828] font-black text-xs shadow"
+                        >
+                          Vote Page →
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isAnalyzing}
+                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] hover:brightness-110 text-[#380828] font-black text-sm sm:text-base border-2 border-[#4A1238] shadow-xl transition active:scale-[0.99] disabled:opacity-50"
+                    >
+                      {isAnalyzing
+                        ? "Checking Arena & Generating..."
+                        : existingUserMatch
+                        ? `Load @${existingUserMatch.handle}'s Registered Card (${existingUserMatch.patakhaName}) 💥`
+                        : "Generate My Cracker Card 💥"}
+                    </button>
+                  </form>
+
+                  {errorMsg && (
+                    <div className="p-3 rounded-xl bg-red-950/90 border border-red-400 text-red-100 text-xs font-bold">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  {/* Quick Sample Profiles */}
+                  <div className="pt-2 border-t border-[#FFE600]/25 space-y-2">
+                    <div className="text-[11px] font-extrabold uppercase tracking-wider text-amber-200/80">
+                      Or tap a sample creator to test instant lookup:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_SAMPLE_USERS.map((sample) => (
+                        <button
+                          key={sample}
                           type="button"
                           onClick={() => {
-                            setUrlOrHandle(u);
-                            submitUsernameOrUrl(u);
+                            setUrlOrHandle(`@${sample}`);
+                            submitUsernameOrUrl(sample);
                           }}
-                          className="shrink-0 px-2.5 py-1 rounded-lg bg-[#16020F]/85 hover:bg-[#FFE600] text-amber-200 hover:text-[#380828] border border-[#FFE600]/35 text-xs font-extrabold transition"
+                          className="text-xs px-2.5 py-1.5 rounded-xl bg-[#1A0311] hover:bg-[#FFE600] text-amber-100 hover:text-[#380828] border border-[#FFE600]/40 font-extrabold transition"
                         >
-                          @{u}
+                          @{sample}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Right Live Collectible Cracker Card Column */}
-                  <div ref={cardSectionRef} className="lg:col-span-6 space-y-2">
-                    {featuredProfile && (
-                      <div className="max-w-[420px] mx-auto bg-emerald-950/90 border border-emerald-400/50 rounded-2xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-emerald-200 font-bold">
-                        <span className="flex items-center gap-1.5 truncate">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="truncate">
-                            {lastLoadedWasExisting
-                              ? `Verified DB Card for @${featuredProfile.handle}`
-                              : `Active Card for @${featuredProfile.handle}`}
+                  {/* Upvote 3 Others = +1 Self Bonus Progress Box */}
+                  <div className="pt-3 border-t border-[#FFE600]/25">
+                    <div className="bg-gradient-to-r from-[#380828] via-[#4B0E36] to-[#380828] border-2 border-[#FFE600]/75 rounded-2xl p-3.5 space-y-2 shadow-lg">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-[#FFE600] flex items-center gap-1.5">
+                          <Gift className="w-4 h-4 text-emerald-400" />
+                          <span>
+                            Three Votes to Others = +1 Bonus Vote for You!
                           </span>
                         </span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const rival =
-                                profiles.find(
-                                  (p) =>
-                                    p.handle.toLowerCase() !==
-                                    featuredProfile.handle.toLowerCase()
-                                )?.handle || "aarav";
-                              startHeadToHeadBattle(
-                                featuredProfile.handle,
-                                rival,
-                                battleDays,
-                                Date.now()
-                              );
-                            }}
-                            className="text-[#FFE600] underline font-black"
-                          >
-                            ⚔️ 1v1 Battle
-                          </button>
-                          <span>•</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsBattleMode(false);
-                              setIsPublicVoteMode(true);
-                              if (typeof window !== "undefined") {
-                                window.history.replaceState(
-                                  {},
-                                  "",
-                                  `${window.location.pathname}?u=${encodeURIComponent(
-                                    featuredProfile.handle
-                                  )}`
-                                );
-                              }
-                            }}
-                            className="text-amber-200 underline font-black"
-                          >
-                            Voter Page →
-                          </button>
-                        </div>
+                        <span className="px-2 py-0.5 rounded-lg bg-[#14020E] border border-[#FFE600]/50 text-[#FFE600] text-xs font-black">
+                          {progressInCycle}/3
+                        </span>
                       </div>
-                    )}
-
-                    {featuredProfile ? (
-                      <PatakhaMemeCard
-                        profile={featuredProfile}
-                        onVote={handleVote}
-                        hasVoted={votedHandles.has(
-                          featuredProfile.handle.toLowerCase()
-                        )}
-                        isVoting={votingHandle === featuredProfile.handle}
-                      />
-                    ) : (
-                      <div className="w-full max-w-md mx-auto aspect-square rounded-3xl bg-[#28061C]/80 border-2 border-dashed border-[#FFE600]/50 flex items-center justify-center p-8 text-center text-amber-200 font-bold">
-                        Loading Cracker Card...
-                      </div>
-                    )}
+                      <p className="text-xs text-amber-100/90 leading-relaxed">
+                        Every time you upvote <strong>3 other users</strong> on
+                        the Leaderboard or in 1v1 Battles, your own score (
+                        <strong className="text-emerald-300">
+                          @{effectiveMyHandle || "yourhandle"}
+                        </strong>
+                        ) automatically increases by{" "}
+                        <strong className="text-[#FFE600]">+1 vote</strong> in
+                        real time! ({votesNeededForNextBonus} more{" "}
+                        {votesNeededForNextBonus === 1 ? "upvote" : "upvotes"}{" "}
+                        for your next +1 bonus)
+                      </p>
+                    </div>
                   </div>
-                </section>
-              ) : (
-                <DiwaliSnapFrameStudio
-                  clans={clans}
-                  activeProfile={featuredProfile}
-                  onProfileSynced={(profile, snapshot) => {
-                    applyArenaSnapshot(profile, snapshot, false);
-                  }}
-                  onVote={handleVote}
-                  hasVoted={
-                    featuredProfile
-                      ? votedHandles.has(featuredProfile.handle.toLowerCase())
-                      : false
-                  }
-                  isVoting={
-                    featuredProfile
-                      ? votingHandle === featuredProfile.handle
-                      : false
-                  }
-                />
-              )}
-            </>
-          )}
 
-          {/* SECTION 2: BROWSE PATAKHA CLANS & MEMBER ROSTERS */}
-          <div
-            ref={categoriesSectionRef}
-            className="bg-[#28061C]/92 border-2 border-[#FFE600]/65 rounded-3xl p-3.5 sm:p-6 shadow-2xl backdrop-blur-md"
-          >
+                  {/* Secondary CTA to Frame Photo or Start 1v1 Battle */}
+                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveStudioTab("snap-frame")}
+                      className="w-full py-2.5 px-3 rounded-2xl bg-[#1A0312] hover:bg-[#340724] border border-[#FFE600]/60 text-[#FFE600] font-black text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Frame Photo / Rangoli →</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fA =
+                          effectiveMyHandle ||
+                          profiles[0]?.handle ||
+                          "pragmaticengineer";
+                        const fB =
+                          profiles.find(
+                            (p) => p.handle.toLowerCase() !== fA.toLowerCase()
+                          )?.handle || "aarav";
+                        startHeadToHeadBattle(
+                          fA,
+                          fB,
+                          battleHours,
+                          Date.now(),
+                          profiles,
+                          true,
+                          true
+                        );
+                      }}
+                      className="w-full py-2.5 px-3 rounded-2xl bg-[#1A0312] hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/60 font-black text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Swords className="w-4 h-4" />
+                      <span>Challenge Rival (1v1) →</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Output Collectible Patakha Card Column */}
+                <div
+                  ref={cardSectionRef}
+                  className="lg:col-span-6 flex flex-col items-center space-y-2"
+                >
+                  {featuredProfile && (
+                    <div className="w-full max-w-[420px] flex items-center justify-between px-3 py-1.5 rounded-xl bg-[#1B0312]/90 border border-[#FFE600]/40 text-xs">
+                      <span className="font-extrabold text-amber-100 flex items-center gap-1.5 truncate">
+                        {lastLoadedWasExisting ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>
+                              Registered Card for{" "}
+                              <strong className="text-[#FFE600]">
+                                @{featuredProfile.handle}
+                              </strong>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <PlusCircle className="w-4 h-4 text-[#FFE600] shrink-0" />
+                            <span>
+                              Live Card for{" "}
+                              <strong className="text-[#FFE600]">
+                                @{featuredProfile.handle}
+                              </strong>
+                            </span>
+                          </>
+                        )}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleInspectProfileFromLeaderboard(featuredProfile)
+                        }
+                        className="text-[#FFE600] font-black underline shrink-0 ml-2"
+                      >
+                        Open Vote View →
+                      </button>
+                    </div>
+                  )}
+
+                  {featuredProfile ? (
+                    <PatakhaMemeCard
+                      profile={featuredProfile}
+                      onVote={handleVote}
+                      hasVoted={votedHandles.has(
+                        featuredProfile.handle.toLowerCase()
+                      )}
+                      isVoting={votingHandle === featuredProfile.handle}
+                    />
+                  ) : (
+                    <div className="w-full max-w-[420px] rounded-3xl border-2 border-dashed border-[#FFE600]/50 p-10 text-center text-amber-200/80 bg-[#240518]/85">
+                      Loading your Diwali Patakha Card...
+                    </div>
+                  )}
+                </div>
+              </section>
+            ) : (
+              <DiwaliSnapFrameStudio
+                clans={clans}
+                allProfiles={profiles}
+                activeProfile={featuredProfile}
+                onProfileSynced={(profile, snapshot) =>
+                  applyArenaSnapshot(profile, snapshot, true)
+                }
+                onVote={handleVote}
+                hasVoted={
+                  featuredProfile
+                    ? votedHandles.has(featuredProfile.handle.toLowerCase())
+                    : false
+                }
+                isVoting={
+                  featuredProfile
+                    ? votingHandle === featuredProfile.handle
+                    : false
+                }
+              />
+            )}
+          </>
+        )}
+
+        {/* Clan Wars Matrix + Interactive Clan Member Roster Browser */}
+        <div ref={categoriesSectionRef}>
+          {clans.length > 0 && (
             <ClanWarsMatrix
               clans={clans}
               profiles={profiles}
@@ -1317,226 +1868,115 @@ export default function PatakhaArenaClient() {
               onSelectPatakha={(id) => {
                 setSelectedPatakha(id);
               }}
+              onInspectProfile={handleInspectProfileFromLeaderboard}
+              onStartBattleWithProfile={handleStartBattleWithProfile}
               onVote={handleVote}
               votedHandles={votedHandles}
               votingHandle={votingHandle}
-              onInspectProfile={(profile) => {
-                setFeaturedProfile(profile);
-                setIsBattleMode(false);
-                setIsPublicVoteMode(true);
-                if (typeof window !== "undefined") {
-                  window.history.replaceState(
-                    {},
-                    "",
-                    `${window.location.pathname}?u=${encodeURIComponent(
-                      profile.handle
-                    )}`
-                  );
-                }
-                topStudioRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                });
-              }}
-              onStartBattleWithProfile={(targetProfile) => {
-                const myHandle =
-                  featuredProfile &&
-                  featuredProfile.handle.toLowerCase() !==
-                    targetProfile.handle.toLowerCase()
-                    ? featuredProfile.handle
-                    : profiles.find(
-                        (p) =>
-                          p.handle.toLowerCase() !==
-                          targetProfile.handle.toLowerCase()
-                      )?.handle || "pragmaticengineer";
-                startHeadToHeadBattle(
-                  myHandle,
-                  targetProfile.handle,
-                  battleDays,
-                  Date.now()
-                );
-              }}
             />
-          </div>
-
-          {/* SECTION 3: VOTING LEADERBOARD */}
-          <div ref={leaderboardSectionRef}>
-            <ArenaLeaderboard
-              profiles={profiles}
-              clans={clans}
-              selectedPatakha={selectedPatakha}
-              onSelectPatakha={setSelectedPatakha}
-              onVote={handleVote}
-              votedHandles={votedHandles}
-              onStartBattleWithProfile={(targetProfile) => {
-                const myHandle =
-                  featuredProfile &&
-                  featuredProfile.handle.toLowerCase() !==
-                    targetProfile.handle.toLowerCase()
-                    ? featuredProfile.handle
-                    : profiles.find(
-                        (p) =>
-                          p.handle.toLowerCase() !==
-                          targetProfile.handle.toLowerCase()
-                      )?.handle || "pragmaticengineer";
-                startHeadToHeadBattle(
-                  myHandle,
-                  targetProfile.handle,
-                  battleDays,
-                  Date.now()
-                );
-              }}
-              onInspectProfile={(profile) => {
-                setFeaturedProfile(profile);
-                setIsBattleMode(false);
-                setIsPublicVoteMode(true);
-                if (typeof window !== "undefined") {
-                  window.history.replaceState(
-                    {},
-                    "",
-                    `${window.location.pathname}?u=${encodeURIComponent(
-                      profile.handle
-                    )}`
-                  );
-                }
-                topStudioRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                });
-              }}
-              votingHandle={votingHandle}
-            />
-          </div>
-        </main>
-      </div>
-
-      {/* DEVELOPER & LIVE TRAFFIC SOFTWARE ENGINEERING FOOTER */}
-      <footer className="relative z-10 max-w-6xl w-full mx-auto px-3 sm:px-6 mt-10 mb-6">
-        <div className="bg-[#1C0313]/95 border-2 border-[#FFE600]/55 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
-            <div className="space-y-1.5 max-w-2xl">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#FFE600]/15 border border-[#FFE600]/45 text-[#FFE600] text-[11px] font-black uppercase tracking-wider">
-                <Code2 className="w-3.5 h-3.5" />
-                Live Systems & Software Engineering Showcase
-              </div>
-              <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed font-medium">
-                I built{" "}
-                <strong className="text-[#FFE600]">Rate My Patakha</strong> to
-                welcome real users and test my software engineering,
-                high-concurrency caching, and real-time database skills by
-                handling live community traffic! Share your card, tag a friend
-                in a 1v1 Battle, and help stress-test the arena! 🚀
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-2.5 shrink-0 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveGuideTab("frames");
-                  setShowUserGuideModal(true);
-                }}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#2A071D] hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/50 font-black text-xs inline-flex items-center justify-center gap-1.5 transition"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span>Read User Manual</span>
-              </button>
-
-              <a
-                href="mailto:rahulkcoding2023@gmail.com?subject=Rate%20My%20Patakha%20Feedback"
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#FFE600] via-[#FF9F1C] to-[#FF5400] text-[#380828] font-black text-xs sm:text-sm border-2 border-[#4A1238] shadow-lg inline-flex items-center justify-center gap-1.5 hover:brightness-110 transition"
-              >
-                <Mail className="w-4 h-4 stroke-[2.5]" />
-                <span>rahulkcoding2023@gmail.com</span>
-              </a>
-            </div>
-          </div>
+          )}
         </div>
-      </footer>
 
-      {/* STICKY MOBILE BOTTOM NAVIGATION BAR */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#1B0312]/95 border-t-2 border-[#FFE600]/65 px-2 py-1.5 backdrop-blur-lg shadow-[0_-8px_25px_rgba(0,0,0,0.8)]">
-        <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
-          <button
-            type="button"
-            onClick={() => {
-              setIsPublicVoteMode(false);
-              setIsBattleMode(false);
-              setActiveStudioTab("patakha-card");
-              topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className={`flex flex-col items-center justify-center py-1.5 rounded-xl text-[10px] font-black transition ${
-              !isPublicVoteMode &&
-              !isBattleMode &&
-              activeStudioTab === "patakha-card"
-                ? "bg-[#FFE600] text-[#380828]"
-                : "text-amber-200"
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span className="mt-0.5">Card</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsPublicVoteMode(false);
-              setIsBattleMode(false);
-              setActiveStudioTab("snap-frame");
-              topStudioRef.current?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className={`flex flex-col items-center justify-center py-1.5 rounded-xl text-[10px] font-black transition ${
-              !isPublicVoteMode &&
-              !isBattleMode &&
-              activeStudioTab === "snap-frame"
-                ? "bg-[#FFE600] text-[#380828]"
-                : "text-amber-200"
-            }`}
-          >
-            <Camera className="w-4 h-4" />
-            <span className="mt-0.5">Frames</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const a =
-                featuredProfile?.handle ||
-                profiles[0]?.handle ||
-                "pragmaticengineer";
-              const b =
-                profiles.find((p) => p.handle !== a)?.handle || "aarav";
-              startHeadToHeadBattle(a, b, battleDays, Date.now());
-            }}
-            className={`flex flex-col items-center justify-center py-1.5 rounded-xl text-[10px] font-black transition ${
-              isBattleMode ? "bg-[#FFE600] text-[#380828]" : "text-amber-200"
-            }`}
-          >
-            <Swords className="w-4 h-4 text-[#FFE600]" />
-            <span className="mt-0.5">1v1 Battle</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              categoriesSectionRef.current?.scrollIntoView({
-                behavior: "smooth",
-              })
+        {/* Full Live Community Voting Leaderboard */}
+        <div ref={leaderboardSectionRef}>
+          <ArenaLeaderboard
+            profiles={profiles}
+            clans={clans}
+            selectedPatakha={selectedPatakha}
+            onSelectPatakha={setSelectedPatakha}
+            onVote={handleVote}
+            onInspectProfile={handleInspectProfileFromLeaderboard}
+            onStartBattleWithProfile={handleStartBattleWithProfile}
+            onJoinActiveBattle={(handleA, handleB, hrs) =>
+              startHeadToHeadBattle(
+                handleA,
+                handleB,
+                hrs || 12,
+                undefined,
+                profiles,
+                true,
+                false
+              )
             }
-            className="flex flex-col items-center justify-center py-1.5 rounded-xl text-[10px] font-black text-amber-200 active:bg-white/10"
-          >
-            <Compass className="w-4 h-4 text-[#FFE600]" />
-            <span className="mt-0.5">Clans</span>
-          </button>
+            votingHandle={votingHandle}
+            votedHandles={votedHandles}
+            myHandle={effectiveMyHandle}
+            othersVotedCount={othersVotedCount}
+          />
+        </div>
+
+        {/* 1-WEEK GRAND FINALE ANNOUNCEMENT BANNER */}
+        <section className="bg-gradient-to-r from-[#3D082A] via-[#590D3B] to-[#3D082A] border-2 border-[#FFE600] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="space-y-1 text-center md:text-left">
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#FFE600] text-[#380828] text-[11px] font-black uppercase tracking-wider">
+              <Clock className="w-3.5 h-3.5" />
+              Grand Finale Schedule • Hourly +1 Auto-Vote Active
+            </div>
+            <h3 className="text-lg sm:text-2xl font-black text-white">
+              🏆 Overall #1 Diwali Patakha Leaderboard Winner Announced in 1
+              Week!
+            </h3>
+            <p className="text-xs sm:text-sm text-amber-100/90 max-w-2xl">
+              Every profile receives{" "}
+              <strong className="text-[#FFE600]">+1 vote every hour</strong>,
+              and upvoting <strong>3 other users</strong> gives your own score{" "}
+              <strong className="text-[#FFE600]">+1 Bonus Vote</strong>{" "}
+              instantly! 1v1 Battles crown their winner as soon as their custom
+              hour countdown finishes.
+            </p>
+          </div>
 
           <button
             type="button"
             onClick={() => setShowUserGuideModal(true)}
-            className="flex flex-col items-center justify-center py-1.5 rounded-xl text-[10px] font-black text-amber-200 active:bg-white/10"
+            className="shrink-0 px-4 py-2.5 rounded-xl bg-[#FFE600] hover:bg-amber-300 text-[#380828] font-black text-xs sm:text-sm inline-flex items-center gap-1.5 shadow-lg transition"
           >
-            <HelpCircle className="w-4 h-4 text-[#FFE600]" />
-            <span className="mt-0.5">Manual</span>
+            <BookOpen className="w-4 h-4" />
+            <span>Read Simple Guide</span>
           </button>
-        </div>
-      </nav>
+        </section>
+
+        {/* Footer with User Guide, Developer Audit Link, and GitHub Repo */}
+        <footer className="pt-4 pb-8 text-center space-y-3">
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 bg-[#1D0313]/90 border border-[#FFE600]/40 px-4 py-2.5 rounded-2xl text-xs text-amber-200/90">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>
+              <strong>100% Privacy-First Photo Framing:</strong> Uploaded photos
+              are rendered in your browser and never stored on our servers.
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-amber-200/75 font-semibold">
+            <span>Rate My Patakha 🧨</span>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setShowUserGuideModal(true)}
+              className="text-[#FFE600] hover:underline font-extrabold"
+            >
+              User Guide
+            </button>
+            <span>•</span>
+            <a
+              href="/audit"
+              className="text-emerald-300 hover:underline font-extrabold inline-flex items-center gap-1"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>System Audit (/audit)</span>
+            </a>
+            <span>•</span>
+            <a
+              href="https://github.com/SavantCode/rateMyPatakha"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-100 hover:text-[#FFE600] hover:underline font-extrabold inline-flex items-center gap-1"
+            >
+              <Github className="w-3.5 h-3.5" />
+              <span>GitHub</span>
+            </a>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

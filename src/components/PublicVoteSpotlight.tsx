@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { RankedArenaProfile } from "@/lib/store";
 import {
   Flame,
@@ -40,6 +40,18 @@ export default function PublicVoteSpotlight({
   onStartRivalryBattle,
 }: Props) {
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
+
+  useEffect(() => {
+    setIsImageLoaded(false);
+    const preload = new Image();
+    preload.onload = () => setIsImageLoaded(true);
+    preload.onerror = () => setIsImageLoaded(true);
+    preload.src = profile.patakhaImageUrl;
+    if (preload.complete) {
+      setIsImageLoaded(true);
+    }
+  }, [profile.patakhaImageUrl]);
 
   const displayHandle = profile.handle.startsWith("@")
     ? profile.handle
@@ -89,11 +101,11 @@ export default function PublicVoteSpotlight({
 
   const handleShareFriendsLink = async () => {
     const url = getShareUrl();
-    const text = `🧨 Upvote ${displayHandle} (${profile.patakhaName} — Rank #${profile.clanRank}) on the Diwali Patakha Leaderboard!`;
+    const text = `Cast your upvote for ${displayHandle} (${profile.patakhaName} — Rank #${profile.clanRank} of ${profile.clanTotalCount}) on the Rate My Patakha Diwali Leaderboard:`;
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: `Vote for ${displayHandle} on Rate My Patakha!`,
+          title: `Vote for ${displayHandle} on Rate My Patakha`,
           text,
           url,
         });
@@ -162,10 +174,26 @@ export default function PublicVoteSpotlight({
                     </div>
 
                     <div className="relative aspect-square w-full rounded-2xl overflow-hidden border-2 border-[#D97706] bg-gradient-to-b from-[#ECD2A6] to-[#C89D66] shadow-inner flex items-center justify-center">
+                      {!isImageLoaded && (
+                        <div className="absolute inset-0 z-10 bg-gradient-to-br from-[#3A0B27] via-[#590D3B] to-[#260419] flex flex-col items-center justify-center p-6 text-center animate-pulse">
+                          <div className="w-14 h-14 rounded-2xl bg-[#FFE600]/20 border-2 border-[#FFE600] flex items-center justify-center mb-2">
+                            <Sparkles className="w-7 h-7 text-[#FFE600] animate-spin" />
+                          </div>
+                          <div className="text-xs font-black uppercase tracking-widest text-[#FFE600]">
+                            Loading {profile.patakhaName}...
+                          </div>
+                        </div>
+                      )}
                       <img
                         src={profile.patakhaImageUrl}
                         alt={profile.patakhaName}
-                        className="w-full h-full object-cover select-none pointer-events-none"
+                        fetchPriority="high"
+                        decoding="async"
+                        onLoad={() => setIsImageLoaded(true)}
+                        onError={() => setIsImageLoaded(true)}
+                        className={`w-full h-full object-cover select-none pointer-events-none transition-opacity duration-300 ${
+                          isImageLoaded ? "opacity-100" : "opacity-0"
+                        }`}
                       />
                     </div>
 
@@ -205,12 +233,12 @@ export default function PublicVoteSpotlight({
                 {hasVoted ? (
                   <>
                     You Upvoted{" "}
-                    <span className="gold-shimmer">{displayHandle}</span>! 🧨
+                    <span className="gold-shimmer">{displayHandle}</span>!
                   </>
                 ) : (
                   <>
                     Help <span className="gold-shimmer">{displayHandle}</span>{" "}
-                    Reach Rank #1! 🏆
+                    Reach Rank #1!
                   </>
                 )}
               </h2>
@@ -218,7 +246,7 @@ export default function PublicVoteSpotlight({
               <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
                 {hasVoted
                   ? `Your vote has been recorded on the live leaderboard! Challenge a friend to a 1v1 Battle or create your own Patakha Card below.`
-                  : `${displayHandle} was categorized as a "${profile.patakhaName}". Tap the button below to cast your upvote and push them higher on the Diwali Leaderboard!`}
+                  : `${displayHandle} was categorized as "${profile.patakhaName}". Tap the button below to cast your upvote and push them higher on the Diwali Leaderboard!`}
               </p>
             </div>
 
@@ -315,8 +343,8 @@ export default function PublicVoteSpotlight({
                 {isVoting
                   ? "Recording Upvote..."
                   : hasVoted
-                  ? `✅ Upvoted ${displayHandle} (${profile.votes} Votes)`
-                  : `🔥 Tap to Upvote ${displayHandle} (${profile.votes})`}
+                  ? `Upvoted ${displayHandle} (${profile.votes} Votes)`
+                  : `Tap to Upvote ${displayHandle} (${profile.votes})`}
               </span>
             </button>
 
@@ -368,7 +396,7 @@ export default function PublicVoteSpotlight({
               <div className="bg-gradient-to-r from-[#3B0828] via-[#4E0B35] to-[#3B0828] border-2 border-[#FFE600]/65 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="text-center sm:text-left">
                   <div className="text-xs font-black uppercase tracking-wider text-[#FFE600]">
-                    🧨 Which Patakha Are You?
+                    Which Patakha Are You?
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-white mt-0.5">
                     Create your own Cracker Card or Wooden Frame in 5 seconds!

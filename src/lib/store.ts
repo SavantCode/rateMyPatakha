@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { classifyProfileToPatakha } from "./classifier";
 import { getAvailablePatakhas, PatakhaArchetype, PatakhaId } from "./patakhas";
 import { getMongoDb } from "./mongodb";
 
@@ -22,6 +23,9 @@ export interface RankedArenaProfile extends ArenaProfile {
   globalRank: number;
   clanRank: number;
   clanTotalCount: number;
+  inActiveBattle?: boolean;
+  activeBattleRival?: string | null;
+  activeBattleHours?: number | null;
 }
 
 export interface PatakhaClanSummary {
@@ -36,10 +40,30 @@ export interface PatakhaClanSummary {
   clanRank: number;
 }
 
+export interface ArenaBattle {
+  id: string;
+  handleA: string;
+  handleB: string;
+  hours: number;
+  startMs: number;
+  endMs: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RankedArenaBattle extends ArenaBattle {
+  fighterA: RankedArenaProfile;
+  fighterB: RankedArenaProfile;
+  totalBattleVotes: number;
+  isExpired: boolean;
+}
+
 export interface RecentArenaEvent {
   id: string;
-  type: "vote" | "join";
+  type: "vote" | "join" | "battle";
   handle: string;
+  rivalHandle?: string;
+  battleHours?: number;
   patakhaName: string;
   patakhaEmoji: string;
   votes: number;
@@ -50,6 +74,7 @@ export interface ArenaSnapshot {
   patakhas: PatakhaArchetype[];
   profiles: RankedArenaProfile[];
   clans: PatakhaClanSummary[];
+  activeBattles: RankedArenaBattle[];
   recentEvents: RecentArenaEvent[];
   totalCreators: number;
   totalVotes: number;
@@ -68,22 +93,76 @@ const DEFAULT_HANDLES = [
 ];
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
+const LIVE_PULSE_INTERVAL_MS = 5000;
 
 const globalForArena = globalThis as unknown as {
   patakhaArenaProfiles?: Map<string, ArenaProfile>;
+  patakhaArenaBattles?: Map<string, ArenaBattle>;
   patakhaVisitorCount?: number;
   patakhaVisitedSet?: Set<string>;
   patakhaRecentEvents?: RecentArenaEvent[];
+  voterGivenCounts?: Map<string, number>;
   mongoSeeded?: boolean;
+  mongoBattlesSeeded?: boolean;
   cachedSnapshot?: ArenaSnapshot;
   cachedProfileLookupMap?: Map<string, RankedArenaProfile>;
   cachedSnapshotAt?: number;
   inflightSnapshotPromise?: Promise<ArenaSnapshot> | null;
   serverHmacSecret?: string;
-  lastHourlyBoostCheckAt?: number;
+  lastHourlyTickSlot?: number;
+  lastLivePulseAt?: number;
 };
 
-const SNAPSHOT_CACHE_TTL_MS = 2000;
+const SNAPSHOT_CACHE_TTL_MS = 1000;
+
+function getCurrentHourSlot(): number {
+  return Math.floor(Date.now() / ONE_HOUR_MS);
+}
+
+function getVoterGivenCountsMap(): Map<string, number> {
+  if (!globalForArena.voterGivenCounts) {
+    globalForArena.voterGivenCounts = new Map<string, number>();
+  }
+  return globalForArena.voterGivenCounts;
+}
+
+function makeBattlePairId(handleA: string, handleB: string): string {
+  const [first, second] = [
+    sanitizeHandle(handleA),
+    sanitizeHandle(handleB),
+  ].sort();
+  return `${first}__vs__${second}`;
+}
+
+function getMemoryBattlesMap(): Map<string, ArenaBattle> {
+  if (!globalForArena.patakhaArenaBattles) {
+    const map = new Map<string, ArenaBattle>();
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+
+    const seedBattles: Array<{ a: string; b: string; hours: number }> = [
+      { a: "pragmaticengineer", b: "aarav", hours: 12 },
+      { a: "rohan", b: "priya", hours: 6 },
+    ];
+
+    for (const sb of seedBattles) {
+      const id = makeBattlePairId(sb.a, sb.b);
+      map.set(id, {
+        id,
+        handleA: sb.a,
+        handleB: sb.b,
+        hours: sb.hours,
+        startMs: now - 15 * 60 * 1000,
+        endMs: now - 15 * 60 * 1000 + sb.hours * ONE_HOUR_MS,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+
+    globalForArena.patakhaArenaBattles = map;
+  }
+  return globalForArena.patakhaArenaBattles;
+}
 
 function getServerHmacSecret(): string {
   if (process.env.CREATOR_HMAC_SECRET) {
@@ -154,28 +233,13 @@ function pushRecentEvent(event: Omit<RecentArenaEvent, "id" | "timestamp">) {
   globalForArena.patakhaRecentEvents = [
     next,
     ...globalForArena.patakhaRecentEvents,
-  ].slice(0, 12);
+  ].slice(0, 14);
 }
 
 function invalidateSnapshotCache() {
   globalForArena.cachedSnapshot = undefined;
   globalForArena.cachedProfileLookupMap = undefined;
   globalForArena.cachedSnapshotAt = 0;
-}
-
-/**
- * Calculates how many automatic engagement upvotes a profile should receive
- * if they haven't received a vote for more than 1 hour (3,600,000 ms).
- * Awards +1 upvote per elapsed idle hour (capped at +12 per check to keep ranks organic).
- */
-function computeHourlyIdleBoost(profile: ArenaProfile, nowMs: number): number {
-  const refTimeStr = profile.lastVotedAt || profile.createdAt;
-  const refMs = refTimeStr ? new Date(refTimeStr).getTime() : nowMs;
-  if (Number.isNaN(refMs) || nowMs - refMs < ONE_HOUR_MS) {
-    return 0;
-  }
-  const elapsedHours = Math.floor((nowMs - refMs) / ONE_HOUR_MS);
-  return Math.min(12, Math.max(1, elapsedHours));
 }
 
 function getMemoryProfileMap(): Map<string, ArenaProfile> {
@@ -201,12 +265,20 @@ function getMemoryProfileMap(): Map<string, ArenaProfile> {
       });
     });
     globalForArena.patakhaArenaProfiles = map;
+    globalForArena.lastHourlyTickSlot = getCurrentHourSlot();
+    globalForArena.lastLivePulseAt = Date.now();
   }
 
   const validIds = new Set(patakhas.map((p) => p.id));
   const map = globalForArena.patakhaArenaProfiles;
-  const nowMs = Date.now();
-  const nowIso = new Date(nowMs).toISOString();
+  const currentSlot = getCurrentHourSlot();
+  const prevSlot = globalForArena.lastHourlyTickSlot ?? currentSlot;
+  const elapsedHours =
+    currentSlot > prevSlot ? Math.min(24, currentSlot - prevSlot) : 0;
+
+  if (elapsedHours > 0) {
+    globalForArena.lastHourlyTickSlot = currentSlot;
+  }
 
   let i = 0;
   for (const [key, profile] of map.entries()) {
@@ -216,11 +288,8 @@ function getMemoryProfileMap(): Map<string, ArenaProfile> {
       updated = true;
     }
 
-    // Apply automatic 1-hour idle upvote boost so users feel continuous engagement
-    const boost = computeHourlyIdleBoost(profile, nowMs);
-    if (boost > 0) {
-      profile.votes += boost;
-      profile.lastVotedAt = nowIso;
+    if (elapsedHours > 0) {
+      profile.votes += elapsedHours;
       updated = true;
     }
 
@@ -231,6 +300,145 @@ function getMemoryProfileMap(): Map<string, ArenaProfile> {
   }
 
   return map;
+}
+
+/**
+ * Ensures every user profile in MongoDB (and memory) receives +1 vote per elapsed hour.
+ */
+export async function runHourlyVoteIncrement(): Promise<{
+  incrementedBy: number;
+  hourSlot: number;
+}> {
+  const currentSlot = getCurrentHourSlot();
+  const db = await getMongoDb();
+
+  if (db) {
+    try {
+      const metricsCol = db.collection<{
+        _id: string;
+        lastHourSlot?: number;
+      }>("site_metrics");
+      const profilesCol = db.collection<ArenaProfile>("profiles");
+
+      const tickerDoc = await metricsCol.findOne({
+        _id: "hourly_vote_ticker",
+      });
+
+      if (!tickerDoc || typeof tickerDoc.lastHourSlot !== "number") {
+        await metricsCol
+          .updateOne(
+            { _id: "hourly_vote_ticker" },
+            { $setOnInsert: { lastHourSlot: currentSlot } },
+            { upsert: true }
+          )
+          .catch(() => {});
+        globalForArena.lastHourlyTickSlot = currentSlot;
+        return { incrementedBy: 0, hourSlot: currentSlot };
+      }
+
+      if (currentSlot > tickerDoc.lastHourSlot) {
+        const elapsedHours = Math.min(24, currentSlot - tickerDoc.lastHourSlot);
+        const claimResult = await metricsCol.updateOne(
+          {
+            _id: "hourly_vote_ticker",
+            lastHourSlot: tickerDoc.lastHourSlot,
+          },
+          { $set: { lastHourSlot: currentSlot } }
+        );
+
+        if (claimResult.modifiedCount > 0) {
+          await profilesCol.updateMany({}, { $inc: { votes: elapsedHours } });
+          globalForArena.lastHourlyTickSlot = currentSlot;
+          invalidateSnapshotCache();
+          return { incrementedBy: elapsedHours, hourSlot: currentSlot };
+        }
+      }
+
+      globalForArena.lastHourlyTickSlot = currentSlot;
+      return { incrementedBy: 0, hourSlot: currentSlot };
+    } catch (e) {
+      console.error("Hourly vote increment DB check error:", e);
+    }
+  }
+
+  const prevSlot = globalForArena.lastHourlyTickSlot ?? currentSlot;
+  if (currentSlot > prevSlot) {
+    const delta = Math.min(24, currentSlot - prevSlot);
+    getMemoryProfileMap();
+    invalidateSnapshotCache();
+    return { incrementedBy: delta, hourSlot: currentSlot };
+  }
+
+  return { incrementedBy: 0, hourSlot: currentSlot };
+}
+
+/**
+ * Keeps the live arena feed, active battles, and vote counters continuously active
+ * so all visitors see real-time vote increments across every page.
+ */
+async function maybeTriggerLiveArenaPulse(): Promise<void> {
+  const now = Date.now();
+  const lastPulse = globalForArena.lastLivePulseAt ?? 0;
+  if (now - lastPulse < LIVE_PULSE_INTERVAL_MS) {
+    return;
+  }
+  globalForArena.lastLivePulseAt = now;
+
+  const patakhas = getAvailablePatakhas();
+  const patakhaMap = new Map<string, PatakhaArchetype>(
+    patakhas.map((p) => [p.id, p])
+  );
+
+  const db = await getMongoDb();
+  if (db) {
+    try {
+      const col = db.collection<ArenaProfile>("profiles");
+      const sample = await col
+        .aggregate<ArenaProfile>([{ $sample: { size: 1 } }])
+        .toArray();
+      const chosen = sample[0];
+      if (chosen && chosen.handle) {
+        const nextVotes = (chosen.votes || 10) + 1;
+        await col.updateOne(
+          { handle: chosen.handle },
+          {
+            $inc: { votes: 1 },
+            $set: { lastVotedAt: new Date().toISOString() },
+          }
+        );
+        const archetype = patakhaMap.get(chosen.patakhaId) || patakhas[0];
+        pushRecentEvent({
+          type: "vote",
+          handle: chosen.handle,
+          patakhaName: archetype.name,
+          patakhaEmoji: archetype.emoji,
+          votes: nextVotes,
+        });
+        invalidateSnapshotCache();
+      }
+      return;
+    } catch {
+      // fall through to memory pulse
+    }
+  }
+
+  const map = getMemoryProfileMap();
+  const entries = Array.from(map.values());
+  if (entries.length > 0) {
+    const chosen = entries[Math.floor(Math.random() * entries.length)];
+    chosen.votes += 1;
+    chosen.lastVotedAt = new Date().toISOString();
+    map.set(chosen.handle, chosen);
+    const archetype = patakhaMap.get(chosen.patakhaId) || patakhas[0];
+    pushRecentEvent({
+      type: "vote",
+      handle: chosen.handle,
+      patakhaName: archetype.name,
+      patakhaEmoji: archetype.emoji,
+      votes: chosen.votes,
+    });
+    invalidateSnapshotCache();
+  }
 }
 
 /**
@@ -246,8 +454,9 @@ export async function findRegisteredProfile(
   return globalForArena.cachedProfileLookupMap?.get(key) || null;
 }
 
-async function loadProfilesFromSource(): Promise<{
+async function loadProfilesAndBattlesFromSource(): Promise<{
   profiles: ArenaProfile[];
+  battles: ArenaBattle[];
   visitorCount: number;
   dbConnected: boolean;
 }> {
@@ -258,6 +467,7 @@ async function loadProfilesFromSource(): Promise<{
   if (db) {
     try {
       const col = db.collection<ArenaProfile>("profiles");
+      const battlesCol = db.collection<ArenaBattle>("battles");
       const count = await col.estimatedDocumentCount();
 
       if (count === 0 && !globalForArena.mongoSeeded) {
@@ -282,24 +492,32 @@ async function loadProfilesFromSource(): Promise<{
         await col.insertMany(seeds, { ordered: false }).catch(() => {});
       }
 
-      const docs = await col
-        .find({}, { projection: { voters: 0 } })
-        .sort({ votes: -1, createdAt: -1 })
-        .limit(500)
-        .toArray();
+      if (!globalForArena.mongoBattlesSeeded) {
+        globalForArena.mongoBattlesSeeded = true;
+        const battleCount = await battlesCol.estimatedDocumentCount();
+        if (battleCount === 0) {
+          const memBattles = Array.from(getMemoryBattlesMap().values());
+          await battlesCol
+            .insertMany(memBattles, { ordered: false })
+            .catch(() => {});
+        }
+      }
 
-      const nowMs = Date.now();
-      const nowIso = new Date(nowMs).toISOString();
-      const shouldRunDbBoostWrite =
-        !globalForArena.lastHourlyBoostCheckAt ||
-        nowMs - globalForArena.lastHourlyBoostCheckAt > 30_000;
+      const currentSlot = getCurrentHourSlot();
+      if (globalForArena.lastHourlyTickSlot !== currentSlot) {
+        await runHourlyVoteIncrement();
+      }
 
-      const bulkBoostOps: {
-        updateOne: {
-          filter: { handle: string };
-          update: { $inc: { votes: number }; $set: { lastVotedAt: string } };
-        };
-      }[] = [];
+      const [docs, battleDocs] = await Promise.all([
+        col
+          .find({}, { projection: { voters: 0 } })
+          .sort({ votes: -1, createdAt: -1 })
+          .limit(500)
+          .toArray(),
+        battlesCol.find({}).sort({ updatedAt: -1 }).limit(30).toArray(),
+      ]);
+
+      const nowIso = new Date().toISOString();
 
       const normalized = docs
         .filter((doc) => Boolean(doc.handle && sanitizeHandle(doc.handle)))
@@ -309,29 +527,6 @@ async function loadProfilesFromSource(): Promise<{
           const createdIso = doc.createdAt || nowIso;
           const lastVotedIso = doc.lastVotedAt || createdIso;
 
-          const boost = computeHourlyIdleBoost(
-            {
-              ...doc,
-              handle: clean,
-              votes: baseVotes,
-              createdAt: createdIso,
-              lastVotedAt: lastVotedIso,
-            },
-            nowMs
-          );
-
-          if (boost > 0 && shouldRunDbBoostWrite) {
-            bulkBoostOps.push({
-              updateOne: {
-                filter: { handle: clean },
-                update: {
-                  $inc: { votes: boost },
-                  $set: { lastVotedAt: nowIso },
-                },
-              },
-            });
-          }
-
           return {
             id: clean,
             handle: clean,
@@ -340,16 +535,11 @@ async function loadProfilesFromSource(): Promise<{
             patakhaId: validIds.has(doc.patakhaId)
               ? doc.patakhaId
               : patakhas[idx % patakhas.length].id,
-            votes: baseVotes + boost,
+            votes: baseVotes,
             createdAt: createdIso,
-            lastVotedAt: boost > 0 ? nowIso : lastVotedIso,
+            lastVotedAt: lastVotedIso,
           };
         });
-
-      if (bulkBoostOps.length > 0) {
-        globalForArena.lastHourlyBoostCheckAt = nowMs;
-        await col.bulkWrite(bulkBoostOps, { ordered: false }).catch(() => {});
-      }
 
       const metricsCol = db.collection<{ _id: string; count: number }>(
         "site_metrics"
@@ -362,6 +552,7 @@ async function loadProfilesFromSource(): Promise<{
 
       return {
         profiles: normalized,
+        battles: battleDocs,
         visitorCount,
         dbConnected: true,
       };
@@ -371,15 +562,22 @@ async function loadProfilesFromSource(): Promise<{
   }
 
   const map = getMemoryProfileMap();
+  const battlesMap = getMemoryBattlesMap();
   const visitorCount = globalForArena.patakhaVisitorCount ?? 1240;
   return {
     profiles: Array.from(map.values()).map(({ voters: _v, ...rest }) => rest),
+    battles: Array.from(battlesMap.values()).sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    ),
     visitorCount,
     dbConnected: false,
   };
 }
 
 async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
+  await maybeTriggerLiveArenaPulse();
+
   const patakhas = getAvailablePatakhas();
   const patakhaMap = new Map<string, PatakhaArchetype>(
     patakhas.map((p) => [p.id, p])
@@ -387,9 +585,10 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
 
   const {
     profiles: all,
+    battles: rawBattles,
     visitorCount,
     dbConnected,
-  } = await loadProfilesFromSource();
+  } = await loadProfilesAndBattlesFromSource();
 
   all.sort((a, b) => {
     if (b.votes !== a.votes) return b.votes - a.votes;
@@ -422,6 +621,27 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
     });
   }
 
+  // Map active non-expired battles to each participant handle so Leaderboard & Cards can show "⚔️ In Battle"
+  const nowMs = Date.now();
+  const activeBattleByHandle = new Map<
+    string,
+    { rival: string; hours: number }
+  >();
+  for (const b of rawBattles) {
+    if (b.endMs > nowMs) {
+      const hA = sanitizeHandle(b.handleA);
+      const hB = sanitizeHandle(b.handleB);
+      if (hA && hB) {
+        if (!activeBattleByHandle.has(hA)) {
+          activeBattleByHandle.set(hA, { rival: hB, hours: b.hours });
+        }
+        if (!activeBattleByHandle.has(hB)) {
+          activeBattleByHandle.set(hB, { rival: hA, hours: b.hours });
+        }
+      }
+    }
+  }
+
   const lookupMap = new Map<string, RankedArenaProfile>();
 
   const rankedProfiles: RankedArenaProfile[] = all.map((p, idx) => {
@@ -430,6 +650,7 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
       clanRank: 1,
       clanTotalCount: 1,
     };
+    const battleMeta = activeBattleByHandle.get(p.handle.toLowerCase());
     const ranked: RankedArenaProfile = {
       ...p,
       patakhaName: archetype.name,
@@ -439,10 +660,33 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
       globalRank: idx + 1,
       clanRank: clanMeta.clanRank,
       clanTotalCount: clanMeta.clanTotalCount,
+      inActiveBattle: Boolean(battleMeta),
+      activeBattleRival: battleMeta?.rival || null,
+      activeBattleHours: battleMeta?.hours || null,
     };
     lookupMap.set(p.handle.toLowerCase(), ranked);
     return ranked;
   });
+
+  // Build hydrated RankedArenaBattle list
+  const activeBattles: RankedArenaBattle[] = [];
+  for (const b of rawBattles) {
+    const cleanA = sanitizeHandle(b.handleA);
+    const cleanB = sanitizeHandle(b.handleB);
+    const fighterA = lookupMap.get(cleanA);
+    const fighterB = lookupMap.get(cleanB);
+    if (fighterA && fighterB) {
+      activeBattles.push({
+        ...b,
+        handleA: cleanA,
+        handleB: cleanB,
+        fighterA,
+        fighterB,
+        totalBattleVotes: fighterA.votes + fighterB.votes,
+        isExpired: nowMs >= b.endMs,
+      });
+    }
+  }
 
   const totalVotes = all.reduce((sum, p) => sum + p.votes, 0);
   const totalCreators = all.length;
@@ -478,9 +722,23 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
     !globalForArena.patakhaRecentEvents ||
     globalForArena.patakhaRecentEvents.length === 0
   ) {
-    globalForArena.patakhaRecentEvents = rankedProfiles
-      .slice(0, 5)
-      .map((p, i) => ({
+    const initialEvents: RecentArenaEvent[] = [];
+    if (activeBattles.length > 0) {
+      const topBattle = activeBattles[0];
+      initialEvents.push({
+        id: `seed_battle_0`,
+        type: "battle",
+        handle: topBattle.handleA,
+        rivalHandle: topBattle.handleB,
+        battleHours: topBattle.hours,
+        patakhaName: topBattle.fighterA.patakhaName,
+        patakhaEmoji: "⚔️",
+        votes: topBattle.totalBattleVotes,
+        timestamp: topBattle.updatedAt,
+      });
+    }
+    rankedProfiles.slice(0, 5).forEach((p, i) => {
+      initialEvents.push({
         id: `seed_${i}`,
         type: i % 2 === 0 ? "vote" : "join",
         handle: p.handle,
@@ -488,13 +746,16 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
         patakhaEmoji: p.patakhaEmoji,
         votes: p.votes,
         timestamp: p.createdAt,
-      }));
+      });
+    });
+    globalForArena.patakhaRecentEvents = initialEvents;
   }
 
   const snapshot: ArenaSnapshot = {
     patakhas,
     profiles: rankedProfiles,
     clans,
+    activeBattles,
     recentEvents: globalForArena.patakhaRecentEvents || [],
     totalCreators,
     totalVotes,
@@ -512,8 +773,17 @@ export async function getArenaSnapshot(
   forceFresh = false
 ): Promise<ArenaSnapshot> {
   const now = Date.now();
+  const currentSlot = getCurrentHourSlot();
+  const hourChanged =
+    globalForArena.lastHourlyTickSlot !== undefined &&
+    currentSlot > globalForArena.lastHourlyTickSlot;
+  const pulseDue =
+    now - (globalForArena.lastLivePulseAt ?? 0) >= LIVE_PULSE_INTERVAL_MS;
+
   if (
     !forceFresh &&
+    !hourChanged &&
+    !pulseDue &&
     globalForArena.cachedSnapshot &&
     globalForArena.cachedSnapshotAt &&
     now - globalForArena.cachedSnapshotAt < SNAPSHOT_CACHE_TTL_MS
@@ -661,18 +931,180 @@ export async function getOrCreateArenaProfile(
   };
 }
 
+/**
+ * Creates, updates, or retrieves a 1v1 Head-to-Head Battle in MongoDB & memory.
+ * - Ensures both `handleA` and `handleB` exist as registered Arena profiles.
+ * - Saves `{ id, handleA, handleB, hours, startMs, endMs, createdAt, updatedAt }` in DB.
+ * - Broadcasts a `"battle"` event to `recentEvents` so all users on the site see the matchup live!
+ */
+export async function startOrSyncArenaBattle(params: {
+  handleA: string;
+  handleB: string;
+  hours?: number;
+  startMs?: number;
+  forceUpdate?: boolean;
+}): Promise<{
+  battle: RankedArenaBattle;
+  snapshot: ArenaSnapshot;
+}> {
+  const cleanA = sanitizeHandle(params.handleA);
+  let cleanB = sanitizeHandle(params.handleB);
+
+  if (!cleanA) {
+    throw new Error("Challenger 1 username is required");
+  }
+  if (!cleanB || cleanB === cleanA) {
+    cleanB = cleanA === "aarav" ? "rohan" : "aarav";
+  }
+
+  // Ensure both fighters exist in the database
+  for (const h of [cleanA, cleanB]) {
+    const existing = await findRegisteredProfile(h);
+    if (!existing) {
+      const classified = classifyProfileToPatakha({
+        handle: h,
+        name: h,
+        profileUrl: `https://${h}.substack.com`,
+      });
+      await getOrCreateArenaProfile({
+        id: h,
+        handle: h,
+        name: h,
+        profileUrl: `https://${h}.substack.com`,
+        patakhaId: classified.patakhaId,
+      });
+    }
+  }
+
+  const pairId = makeBattlePairId(cleanA, cleanB);
+  const clampedHours = Math.min(48, Math.max(1, Number(params.hours) || 12));
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+
+  const db = await getMongoDb();
+  const memBattles = getMemoryBattlesMap();
+  let existingBattle: ArenaBattle | null = memBattles.get(pairId) || null;
+
+  if (db) {
+    try {
+      const battlesCol = db.collection<ArenaBattle>("battles");
+      const found = await battlesCol.findOne({ id: pairId });
+      if (found) {
+        existingBattle = found;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const shouldCreateOrUpdate =
+    !existingBattle ||
+    Boolean(params.forceUpdate) ||
+    (params.hours !== undefined && existingBattle.hours !== clampedHours);
+
+  let finalBattleDoc: ArenaBattle;
+
+  if (shouldCreateOrUpdate) {
+    const resolvedStartMs =
+      params.startMs && !Number.isNaN(params.startMs) && !params.forceUpdate
+        ? Math.min(now, Math.max(now - 30 * 86_400_000, params.startMs))
+        : now;
+    const resolvedEndMs = resolvedStartMs + clampedHours * ONE_HOUR_MS;
+
+    finalBattleDoc = {
+      id: pairId,
+      handleA: cleanA,
+      handleB: cleanB,
+      hours: clampedHours,
+      startMs: resolvedStartMs,
+      endMs: resolvedEndMs,
+      createdAt: existingBattle?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    memBattles.set(pairId, finalBattleDoc);
+
+    if (db) {
+      try {
+        const battlesCol = db.collection<ArenaBattle>("battles");
+        await battlesCol.updateOne(
+          { id: pairId },
+          { $set: finalBattleDoc },
+          { upsert: true }
+        );
+      } catch (e) {
+        console.error("Failed to save battle in MongoDB:", e);
+      }
+    }
+
+    pushRecentEvent({
+      type: "battle",
+      handle: cleanA,
+      rivalHandle: cleanB,
+      battleHours: clampedHours,
+      patakhaName: `${clampedHours}h 1v1 Battle`,
+      patakhaEmoji: "⚔️",
+      votes: 0,
+    });
+
+    invalidateSnapshotCache();
+  } else {
+    finalBattleDoc = existingBattle!;
+  }
+
+  const snapshot = await getArenaSnapshot(true);
+  const fighterA =
+    snapshot.profiles.find((p) => p.handle.toLowerCase() === cleanA) ||
+    snapshot.profiles[0];
+  const fighterB =
+    snapshot.profiles.find((p) => p.handle.toLowerCase() === cleanB) ||
+    snapshot.profiles[1] ||
+    snapshot.profiles[0];
+
+  const rankedBattle: RankedArenaBattle = {
+    ...finalBattleDoc,
+    handleA: cleanA,
+    handleB: cleanB,
+    fighterA,
+    fighterB,
+    totalBattleVotes: (fighterA?.votes || 10) + (fighterB?.votes || 10),
+    isExpired: Date.now() >= finalBattleDoc.endMs,
+  };
+
+  return {
+    battle: rankedBattle,
+    snapshot,
+  };
+}
+
+/**
+ * Casts an upvote for `rawHandle`.
+ * Also implements the "Upvote 3 Other Users = +1 Bonus Vote for Your Own Score" rule:
+ * whenever a voter upvotes a 3rd other user (3, 6, 9, 12...), `voterHandle` automatically
+ * gets +1 vote in real time in both MongoDB and memory!
+ */
 export async function voteForProfile(
   rawHandle: string,
-  voterHash: string
+  voterHash: string,
+  rawVoterHandle?: string,
+  clientOthersVotedCount?: number
 ): Promise<{
   profile: RankedArenaProfile | null;
+  bonusProfile: RankedArenaProfile | null;
+  bonusAwarded: boolean;
+  othersVotedCount: number;
   snapshot: ArenaSnapshot;
   alreadyVoted: boolean;
 }> {
   const key = sanitizeHandle(rawHandle);
+  const cleanVoterHandle = rawVoterHandle ? sanitizeHandle(rawVoterHandle) : "";
+
   if (!key) {
     return {
       profile: null,
+      bonusProfile: null,
+      bonusAwarded: false,
+      othersVotedCount: 0,
       snapshot: await getArenaSnapshot(),
       alreadyVoted: false,
     };
@@ -735,13 +1167,90 @@ export async function voteForProfile(
     }
   }
 
-  if (!alreadyVoted) {
+  // Track how many other users this voter has upvoted and award +1 self bonus every 3 upvotes
+  const countsMap = getVoterGivenCountsMap();
+  const voterTrackingKey = cleanVoterHandle || voterHash || "anon";
+  let othersVotedCount = countsMap.get(voterTrackingKey) || 0;
+  let bonusAwarded = false;
+
+  if (!alreadyVoted && cleanVoterHandle !== key) {
+    if (db) {
+      try {
+        const progressCol = db.collection<{ _id: string; count: number }>(
+          "voter_progress"
+        );
+        const existingProg = await progressCol.findOne({
+          _id: voterTrackingKey,
+        });
+        const baseDbCount = existingProg?.count || 0;
+        const nextCount = Math.max(
+          baseDbCount + 1,
+          othersVotedCount + 1,
+          clientOthersVotedCount || 0
+        );
+        othersVotedCount = nextCount;
+        await progressCol.updateOne(
+          { _id: voterTrackingKey },
+          { $set: { count: othersVotedCount } },
+          { upsert: true }
+        );
+      } catch {
+        othersVotedCount = Math.max(
+          othersVotedCount + 1,
+          clientOthersVotedCount || 0
+        );
+      }
+    } else {
+      othersVotedCount = Math.max(
+        othersVotedCount + 1,
+        clientOthersVotedCount || 0
+      );
+    }
+
+    countsMap.set(voterTrackingKey, othersVotedCount);
+
+    if (cleanVoterHandle && othersVotedCount > 0 && othersVotedCount % 3 === 0) {
+      if (db) {
+        try {
+          const col = db.collection<ArenaProfile>("profiles");
+          const bonusRes = await col.updateOne(
+            { handle: cleanVoterHandle },
+            {
+              $inc: { votes: 1 },
+              $set: { lastVotedAt: new Date().toISOString() },
+            }
+          );
+          if (bonusRes.modifiedCount > 0) {
+            bonusAwarded = true;
+          }
+        } catch (e) {
+          console.error("Failed to award 3-vote bonus in DB:", e);
+        }
+      } else {
+        const map = getMemoryProfileMap();
+        const voterOwnProfile = map.get(cleanVoterHandle);
+        if (voterOwnProfile) {
+          voterOwnProfile.votes += 1;
+          voterOwnProfile.lastVotedAt = new Date().toISOString();
+          map.set(cleanVoterHandle, voterOwnProfile);
+          bonusAwarded = true;
+        }
+      }
+    }
+  }
+
+  if (!alreadyVoted || bonusAwarded) {
     invalidateSnapshotCache();
   }
 
-  const snapshot = await getArenaSnapshot(!alreadyVoted);
+  const snapshot = await getArenaSnapshot(!alreadyVoted || bonusAwarded);
   const ranked =
     snapshot.profiles.find((p) => p.handle.toLowerCase() === key) || null;
+  const bonusProfile = cleanVoterHandle
+    ? snapshot.profiles.find(
+        (p) => p.handle.toLowerCase() === cleanVoterHandle
+      ) || null
+    : null;
 
   if (!alreadyVoted && ranked) {
     pushRecentEvent({
@@ -753,8 +1262,21 @@ export async function voteForProfile(
     });
   }
 
+  if (bonusAwarded && bonusProfile) {
+    pushRecentEvent({
+      type: "vote",
+      handle: bonusProfile.handle,
+      patakhaName: bonusProfile.patakhaName,
+      patakhaEmoji: bonusProfile.patakhaEmoji,
+      votes: bonusProfile.votes,
+    });
+  }
+
   return {
     profile: ranked,
+    bonusProfile,
+    bonusAwarded,
+    othersVotedCount,
     snapshot,
     alreadyVoted,
   };
