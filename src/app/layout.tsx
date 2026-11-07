@@ -1,10 +1,28 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+function getMetadataBaseUrl(): URL {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_APP_URL);
+    } catch {
+      // fallback below
+    }
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`);
+  }
+  if (process.env.VERCEL_URL) {
+    return new URL(`https://${process.env.VERCEL_URL}`);
+  }
+  return new URL("http://localhost:3005");
+}
+
 export const metadata: Metadata = {
-  title: "Rate My Patakha 🧨 | 7 Patakha Categorization & Leaderboard",
+  metadataBase: getMetadataBaseUrl(),
+  title: "Rate My Patakha 🧨 | Cracker Cards, Photo/Rangoli Frames & 1v1 Battles",
   description:
-    "Enter your profile URL or username to get categorized into 1 of 7 Patakha images with your username on it and rank on the live leaderboard!",
+    "Enter your username, frame your Photo or Rangoli in handcrafted Diwali frames, or tag a friend in a custom-hour 1v1 Battle!",
 };
 
 export default function RootLayout({

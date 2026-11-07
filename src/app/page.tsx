@@ -8,6 +8,7 @@ interface PageProps {
     u?: string | string[];
     vote?: string | string[];
     vs?: string | string[];
+    hours?: string | string[];
     days?: string | string[];
   };
 }
@@ -15,7 +16,7 @@ interface PageProps {
 /**
  * Dynamic Server-Side OpenGraph & Twitter Metadata Generator:
  * Ensures WhatsApp, X/Twitter, LinkedIn, and Discord crawlers automatically
- * display the user's live Rank, Patakha Clan, Vote count, Battle Days, and `/api/og` social card!
+ * display the user's live Rank, Patakha Clan, Vote count, Battle Hours, and `/api/og` social card!
  */
 export async function generateMetadata({
   searchParams,
@@ -24,10 +25,19 @@ export async function generateMetadata({
     ? searchParams?.vs[0]
     : searchParams?.vs;
 
+  const rawHours = Array.isArray(searchParams?.hours)
+    ? searchParams?.hours[0]
+    : searchParams?.hours;
   const rawDays = Array.isArray(searchParams?.days)
     ? searchParams?.days[0]
     : searchParams?.days;
-  const battleDays = Math.min(90, Math.max(1, parseInt(rawDays || "3", 10) || 3));
+
+  const parsedHours = rawHours
+    ? parseInt(rawHours, 10)
+    : rawDays
+    ? parseInt(rawDays, 10) * 24
+    : 12;
+  const battleHours = Math.min(48, Math.max(1, parsedHours || 12));
 
   if (rawVs && rawVs.includes(",")) {
     const [rawA, rawB] = rawVs.split(",");
@@ -40,11 +50,11 @@ export async function generateMetadata({
 
     const votesA = profA?.votes ?? 10;
     const votesB = profB?.votes ?? 10;
-    const title = `⚔️ @${cleanA} (${votesA}) vs @${cleanB} (${votesB}) • ${battleDays}-Day Patakha Battle!`;
-    const description = `Tap to cast your upvote in the ${battleDays}-Day Diwali Patakha 1v1 Rivalry Battle between @${cleanA} and @${cleanB}!`;
+    const title = `⚔️ @${cleanA} (${votesA}) vs @${cleanB} (${votesB}) • ${battleHours}-Hour Patakha Battle!`;
+    const description = `Tap to cast your upvote in the ${battleHours}-Hour Diwali Patakha 1v1 Rivalry Battle between @${cleanA} and @${cleanB}!`;
     const ogImageUrl = `/api/og?vs=${encodeURIComponent(
       cleanA
-    )},${encodeURIComponent(cleanB)}&days=${battleDays}`;
+    )},${encodeURIComponent(cleanB)}&hours=${battleHours}`;
 
     return {
       title,
@@ -101,9 +111,9 @@ export async function generateMetadata({
   }
 
   const defaultTitle =
-    "Rate My Patakha 🧨 | Cracker Cards, Wooden Frames & Live 1v1 Battles";
+    "Rate My Patakha 🧨 | Cracker Cards, Photo/Rangoli Frames & 1v1 Battles";
   const defaultDesc =
-    "Enter your username, upload your photo into handcrafted Wooden & Rajasthani Diwali frames, or tag a friend in a custom-day 1v1 Battle!";
+    "Enter your username, frame your Photo or Rangoli in handcrafted Diwali frames, or tag a friend in a custom-hour 1v1 Battle!";
 
   return {
     title: defaultTitle,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { RankedArenaProfile } from "@/lib/store";
 import {
   Download,
@@ -48,6 +48,19 @@ export default function PatakhaMemeCard({
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSharingPoster, setIsSharingPoster] = useState(false);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
+
+  // Reset and track loading animation whenever the card artwork URL changes
+  useEffect(() => {
+    setIsImageLoaded(false);
+    const preload = new Image();
+    preload.onload = () => setIsImageLoaded(true);
+    preload.onerror = () => setIsImageLoaded(true);
+    preload.src = profile.patakhaImageUrl;
+    if (preload.complete) {
+      setIsImageLoaded(true);
+    }
+  }, [profile.patakhaImageUrl]);
 
   const getShareableProfileUrl = () => {
     if (typeof window !== "undefined") {
@@ -59,9 +72,14 @@ export default function PatakhaMemeCard({
     return `${base}/?u=${encodeURIComponent(profile.handle)}`;
   };
 
+  const getCleanFormalShareText = (includeUrl = true) => {
+    const shareUrl = getShareableProfileUrl();
+    const baseText = `I got "${profile.patakhaName}" (Rank #${profile.clanRank} of ${profile.clanTotalCount}) on Rate My Patakha. Cast your upvote for @${profile.handle} on the Diwali Patakha Leaderboard:`;
+    return includeUrl ? `${baseText} ${shareUrl}` : baseText;
+  };
+
   /**
    * Builds the 1080x1350 HD Cracker Card Poster Canvas.
-   * Uses cached image loading and resolves gracefully even on offline/flaky mobile networks.
    */
   const buildPosterCanvas = async (): Promise<HTMLCanvasElement> => {
     const loadedImg = await new Promise<HTMLImageElement | null>((resolve) => {
@@ -114,7 +132,7 @@ export default function PatakhaMemeCard({
     ctx.font = "800 22px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(
-      `${profile.patakhaEmoji} ${profile.patakhaName.toUpperCase()} CLAN • RANK #${
+      `${profile.patakhaName.toUpperCase()} CLAN • RANK #${
         profile.clanRank
       } OF ${profile.clanTotalCount}`,
       94,
@@ -124,7 +142,7 @@ export default function PatakhaMemeCard({
     ctx.textAlign = "right";
     ctx.fillStyle = "#B45309";
     ctx.fillText(
-      `OVERALL #${profile.globalRank} • 🔥 ${profile.votes} VOTES`,
+      `OVERALL #${profile.globalRank} • ${profile.votes} VOTES`,
       W - 94,
       108
     );
@@ -177,10 +195,10 @@ export default function PatakhaMemeCard({
       );
     } else {
       ctx.fillStyle = "#78350F";
-      ctx.font = "900 140px system-ui, sans-serif";
+      ctx.font = "900 100px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(profile.patakhaEmoji, artX + artW / 2, artY + artH / 2);
+      ctx.fillText(profile.patakhaName, artX + artW / 2, artY + artH / 2);
     }
     ctx.restore();
 
@@ -201,7 +219,7 @@ export default function PatakhaMemeCard({
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(
-      `✨ ${profile.patakhaName} • Diwali Main Character`,
+      `✦ ${profile.patakhaName} • Diwali Main Character`,
       W / 2,
       1078
     );
@@ -249,7 +267,7 @@ export default function PatakhaMemeCard({
     setIsSharingPoster(true);
     try {
       const shareUrl = getShareableProfileUrl();
-      const shareText = `🧨 I got "${profile.patakhaName}" (Rank #${profile.clanRank} of ${profile.clanTotalCount}) on Rate My Patakha!\n\nVote for @${profile.handle} using my link so I rank #1 on the leaderboard: ${shareUrl}`;
+      const shareText = getCleanFormalShareText(true);
 
       const canvas = await buildPosterCanvas();
       const blob = await new Promise<Blob | null>((resolve) =>
@@ -265,7 +283,7 @@ export default function PatakhaMemeCard({
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: `Vote for @${profile.handle} on Rate My Patakha!`,
+            title: `Vote for @${profile.handle} on Rate My Patakha`,
             text: shareText,
             files: [file],
           });
@@ -273,8 +291,8 @@ export default function PatakhaMemeCard({
         }
 
         await navigator.share({
-          title: `Vote for @${profile.handle} on Rate My Patakha!`,
-          text: shareText,
+          title: `Vote for @${profile.handle} on Rate My Patakha`,
+          text: getCleanFormalShareText(false),
           url: shareUrl,
         });
         return;
@@ -308,8 +326,7 @@ export default function PatakhaMemeCard({
   };
 
   const handleShareWhatsApp = () => {
-    const shareUrl = getShareableProfileUrl();
-    const text = `🧨 I got *${profile.patakhaName}* (Rank #${profile.clanRank} of ${profile.clanTotalCount})!\n\n🔥 Tap my link & upvote *@${profile.handle}* to push me to Rank #1 on the Diwali Leaderboard:\n${shareUrl}`;
+    const text = getCleanFormalShareText(true);
     window.open(
       `https://wa.me/?text=${encodeURIComponent(text)}`,
       "_blank",
@@ -319,9 +336,9 @@ export default function PatakhaMemeCard({
 
   const handleShareX = () => {
     const shareUrl = getShareableProfileUrl();
-    const text = `🧨 I got "${profile.patakhaName}" (Rank #${profile.clanRank} of ${profile.clanTotalCount}) on Rate My Patakha! Upvote @${profile.handle} to push my rank to #1:`;
+    const text = getCleanFormalShareText(false);
     window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+      `https://x.com/intent/post?text=${encodeURIComponent(
         text
       )}&url=${encodeURIComponent(shareUrl)}`,
       "_blank",
@@ -355,12 +372,32 @@ export default function PatakhaMemeCard({
                 </span>
               </div>
 
-              {/* Clean Rounded-Square Cracker Artwork Window */}
+              {/* Clean Rounded-Square Cracker Artwork Window with Festive Shimmer Skeleton */}
               <div className="relative aspect-square w-full rounded-2xl overflow-hidden border-2 border-[#D97706] bg-gradient-to-b from-[#ECD2A6] to-[#C89D66] shadow-[0_10px_28px_rgba(120,53,15,0.28)] flex items-center justify-center">
+                {!isImageLoaded && (
+                  <div className="absolute inset-0 z-10 bg-gradient-to-br from-[#3A0B27] via-[#590D3B] to-[#260419] flex flex-col items-center justify-center p-6 text-center animate-pulse">
+                    <div className="w-16 h-16 rounded-2xl bg-[#FFE600]/20 border-2 border-[#FFE600] flex items-center justify-center mb-3 shadow-[0_0_30px_rgba(255,230,0,0.4)]">
+                      <Sparkles className="w-8 h-8 text-[#FFE600] animate-spin" />
+                    </div>
+                    <div className="text-sm font-black uppercase tracking-widest text-[#FFE600]">
+                      Igniting {profile.patakhaName}...
+                    </div>
+                    <div className="text-[11px] font-semibold text-amber-200/80 mt-1">
+                      Preparing HD Collectible Cracker Artwork
+                    </div>
+                  </div>
+                )}
+
                 <img
                   src={profile.patakhaImageUrl}
                   alt={profile.patakhaName}
-                  className="w-full h-full object-cover"
+                  fetchPriority="high"
+                  decoding="async"
+                  onLoad={() => setIsImageLoaded(true)}
+                  onError={() => setIsImageLoaded(true)}
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                    isImageLoaded ? "opacity-100" : "opacity-0"
+                  }`}
                 />
               </div>
 
@@ -421,7 +458,7 @@ export default function PatakhaMemeCard({
             <TrendingUp className="w-3.5 h-3.5" />
             Share Voting Link to Boost {displayHandle}&apos;s Rank
           </span>
-          <span className="text-emerald-300">🔥 {profile.votes} Upvotes</span>
+          <span className="text-emerald-300">{profile.votes} Upvotes</span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -492,7 +529,7 @@ export default function PatakhaMemeCard({
           className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-[#2A071D]/95 hover:bg-[#3B0B29] border border-[#FFE600]/40 text-white font-extrabold text-xs transition shadow"
         >
           <Share2 className="w-3.5 h-3.5 text-[#FFE600]" />
-          <span>Post Link on X</span>
+          <span>Post on X (x.com)</span>
         </button>
       </div>
     </div>

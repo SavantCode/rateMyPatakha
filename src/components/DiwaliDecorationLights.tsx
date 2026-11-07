@@ -4,7 +4,9 @@ import React from "react";
 
 /**
  * High-craft Festive Diwali Fairy String Lights, Marigold Toran & Swaying Akash Kandils.
- * Uses `preserveAspectRatio="xMidYMin slice"` so fairy bulbs remain circular on all mobile & desktop screens.
+ * - Uses `z-10` so it never covers interactive header buttons (`z-20`).
+ * - Side hanging Akash Kandils are shown on large screens (`hidden xl:block`) in the outer margins
+ *   so they never overlap the mobile/tablet header card or get clipped!
  */
 export default function DiwaliDecorationLights() {
   const scallops = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -28,17 +30,17 @@ export default function DiwaliDecorationLights() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-30 overflow-hidden select-none"
+      className="pointer-events-none fixed inset-x-0 top-0 z-10 select-none"
       aria-hidden="true"
     >
       {/* Top Warm Ambient Ceiling Glow */}
-      <div className="w-full h-16 bg-gradient-to-b from-[#FF9F1C]/35 via-[#FFE600]/10 to-transparent" />
+      <div className="w-full h-14 bg-gradient-to-b from-[#FF9F1C]/35 via-[#FFE600]/10 to-transparent" />
 
       {/* Main Scalloped Fairy Lights Garland SVG */}
       <svg
         viewBox="0 0 1600 115"
         preserveAspectRatio="xMidYMin slice"
-        className="-mt-16 w-full h-[76px] sm:h-[96px] md:h-[110px] drop-shadow-[0_6px_16px_rgba(255,159,28,0.55)]"
+        className="-mt-14 w-full h-[54px] sm:h-[76px] md:h-[92px] drop-shadow-[0_6px_16px_rgba(255,159,28,0.55)]"
       >
         <defs>
           <radialGradient id="diwaliBulbHalo" cx="50%" cy="50%" r="50%">
@@ -97,7 +99,6 @@ export default function DiwaliDecorationLights() {
                       isEven ? "animate-bulb-twinkle" : "animate-bulb-twinkle-slow"
                     }
                   >
-                    {/* Cord cap */}
                     <rect
                       x={pt.x - 2.5}
                       y={pt.y}
@@ -106,14 +107,12 @@ export default function DiwaliDecorationLights() {
                       rx="1"
                       fill="#4A1238"
                     />
-                    {/* Warm Glow Halo */}
                     <circle
                       cx={pt.x}
                       cy={pt.y + 8}
                       r="15"
                       fill="url(#diwaliBulbHalo)"
                     />
-                    {/* Outer Tangerine Ring */}
                     <circle
                       cx={pt.x}
                       cy={pt.y + 8}
@@ -122,7 +121,6 @@ export default function DiwaliDecorationLights() {
                       stroke="#4A1238"
                       strokeWidth="1.2"
                     />
-                    {/* Inner Bright Yellow Core */}
                     <circle cx={pt.x} cy={pt.y + 8} r="3.8" fill="#FFFBEB" />
                   </g>
                 );
@@ -152,8 +150,8 @@ export default function DiwaliDecorationLights() {
         })}
       </svg>
 
-      {/* Left Hanging Akash Kandil Lantern (Scaled cleanly for mobile & desktop) */}
-      <div className="absolute top-1 left-2 sm:left-6 animate-lantern-swing origin-top scale-75 sm:scale-95 md:scale-100">
+      {/* Left Hanging Akash Kandil Lantern (Displayed on wide screens in the outer margin so it never overlaps the mobile header card) */}
+      <div className="hidden xl:block absolute top-1 left-4 animate-lantern-swing origin-top">
         <svg width="64" height="145" viewBox="0 0 64 145" fill="none">
           <line x1="32" y1="0" x2="32" y2="24" stroke="#4A1238" strokeWidth="3" />
           <path d="M16 38 L32 22 L48 38" stroke="#4A1238" strokeWidth="2.5" fill="none" />
@@ -180,7 +178,7 @@ export default function DiwaliDecorationLights() {
       </div>
 
       {/* Right Hanging Akash Kandil Lantern */}
-      <div className="absolute top-1 right-2 sm:right-6 animate-lantern-swing origin-top scale-75 sm:scale-95 md:scale-100">
+      <div className="hidden xl:block absolute top-1 right-4 animate-lantern-swing origin-top">
         <svg width="64" height="145" viewBox="0 0 64 145" fill="none">
           <line x1="32" y1="0" x2="32" y2="24" stroke="#4A1238" strokeWidth="3" />
           <path d="M16 38 L32 22 L48 38" stroke="#4A1238" strokeWidth="2.5" fill="none" />

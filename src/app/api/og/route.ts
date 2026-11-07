@@ -13,17 +13,21 @@ function escapeXml(unsafe: string): string {
 }
 
 /**
- * Dynamic Social OpenGraph Image Generator (`GET /api/og?u=user` or `GET /api/og?vs=user1,user2&days=3`):
+ * Dynamic Social OpenGraph Image Generator (`GET /api/og?u=user` or `GET /api/og?vs=user1,user2&hours=12`):
  * Renders a crisp 1200x630 festive SVG social card for both individual voting links
- * and custom-duration 1v1 Head-to-Head Rivalry Battle links!
+ * and custom-hour 1v1 Head-to-Head Rivalry Battle links!
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const vsParam = searchParams.get("vs") || "";
-  const daysParam = Math.min(
-    90,
-    Math.max(1, parseInt(searchParams.get("days") || "3", 10) || 3)
-  );
+  const rawHours = searchParams.get("hours");
+  const rawDays = searchParams.get("days");
+  const parsedHours = rawHours
+    ? parseInt(rawHours, 10)
+    : rawDays
+    ? parseInt(rawDays, 10) * 24
+    : 12;
+  const hoursParam = Math.min(48, Math.max(1, parsedHours || 12));
 
   if (vsParam.includes(",")) {
     const [rawA, rawB] = vsParam.split(",");
@@ -49,7 +53,7 @@ export async function GET(request: Request) {
       <rect width="1200" height="630" fill="#1F0314"/>
       <rect x="20" y="20" width="1160" height="590" rx="32" fill="none" stroke="#FFE600" stroke-width="6"/>
       <text x="600" y="88" text-anchor="middle" fill="#FFE600" font-family="system-ui, sans-serif" font-weight="900" font-size="30" letter-spacing="3">
-        ⚔️ ${daysParam}-DAY DIWALI PATAKHA 1v1 BATTLE ⚔️
+        ⚔️ ${hoursParam}-HOUR DIWALI PATAKHA 1v1 BATTLE ⚔️
       </text>
 
       <rect x="60" y="130" width="460" height="360" rx="28" fill="#FFF6E3" stroke="#D97706" stroke-width="5"/>

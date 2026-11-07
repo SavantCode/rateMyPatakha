@@ -15,6 +15,7 @@ import {
   Check,
   ChevronDown,
   Swords,
+  Gift,
 } from "lucide-react";
 
 interface Props {
@@ -25,8 +26,15 @@ interface Props {
   onVote: (handle: string) => Promise<void>;
   onInspectProfile: (profile: RankedArenaProfile) => void;
   onStartBattleWithProfile?: (profile: RankedArenaProfile) => void;
+  onJoinActiveBattle?: (
+    handleA: string,
+    handleB: string,
+    hours?: number
+  ) => void;
   votingHandle: string | null;
   votedHandles?: Set<string>;
+  myHandle?: string;
+  othersVotedCount?: number;
 }
 
 const PAGE_SIZE = 20;
@@ -39,8 +47,11 @@ export default function ArenaLeaderboard({
   onVote,
   onInspectProfile,
   onStartBattleWithProfile,
+  onJoinActiveBattle,
   votingHandle,
   votedHandles = new Set(),
+  myHandle = "",
+  othersVotedCount = 0,
 }: Props) {
   const [searchFilter, setSearchFilter] = useState("");
   const [copiedHandle, setCopiedHandle] = useState<string | null>(null);
@@ -64,6 +75,10 @@ export default function ArenaLeaderboard({
     selectedPatakha !== "all"
       ? clans.find((c) => c.patakhaId === selectedPatakha) || null
       : null;
+
+  const progressInCycle = othersVotedCount % 3;
+  const remainingForNextBonus = 3 - progressInCycle;
+  const totalBonusesEarned = Math.floor(othersVotedCount / 3);
 
   const handleCopyUserShareUrl = async (handle: string) => {
     try {
@@ -106,6 +121,65 @@ export default function ArenaLeaderboard({
               Show All ({profiles.length})
             </button>
           )}
+        </div>
+
+        {/* Upvote 3 Others = +1 Self Bonus Banner */}
+        <div className="bg-gradient-to-r from-[#380828] via-[#4A0E35] to-[#380828] border-2 border-[#FFE600]/75 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-lg">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#FFE600] text-[#380828] flex items-center justify-center shrink-0 shadow">
+              <Gift className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div className="text-xs sm:text-sm">
+              <span className="font-black text-[#FFE600]">
+                Reward Rule: Three Votes to Others = +1 Bonus Vote to Your Own
+                Score!
+              </span>
+              <p className="text-[11px] sm:text-xs text-amber-100/90 font-semibold mt-0.5">
+                {myHandle ? (
+                  <>
+                    Every time you upvote 3 other users,{" "}
+                    <strong className="text-emerald-300">@{myHandle}</strong>{" "}
+                    automatically gets{" "}
+                    <strong className="text-[#FFE600]">+1 Bonus Vote</strong> in
+                    real time! ({remainingForNextBonus} more{" "}
+                    {remainingForNextBonus === 1 ? "upvote" : "upvotes"} for
+                    your next +1 bonus)
+                  </>
+                ) : (
+                  <>
+                    Generate your card above, then upvote any 3 other users to
+                    automatically boost your own score by{" "}
+                    <strong className="text-[#FFE600]">+1 vote</strong> each
+                    time!
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 bg-[#14020E] px-2.5 py-1.5 rounded-xl border border-[#FFE600]/45">
+              {[0, 1, 2].map((slot) => (
+                <span
+                  key={slot}
+                  className={`w-3.5 h-3.5 rounded-full border transition ${
+                    slot < progressInCycle
+                      ? "bg-[#FFE600] border-white shadow-[0_0_8px_#FFE600]"
+                      : "bg-white/10 border-[#FFE600]/40"
+                  }`}
+                />
+              ))}
+              <span className="text-[11px] font-black text-[#FFE600] ml-1">
+                {progressInCycle}/3
+              </span>
+            </div>
+
+            {totalBonusesEarned > 0 && (
+              <span className="px-2.5 py-1.5 rounded-xl bg-emerald-600/90 border border-emerald-300/60 text-white text-[11px] font-black">
+                +{totalBonusesEarned} Bonus Earned
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
@@ -211,6 +285,9 @@ export default function ArenaLeaderboard({
             const displayRank =
               selectedPatakha === "all" ? item.globalRank : item.clanRank;
             const hasVoted = votedHandles.has(item.handle.toLowerCase());
+            const isOwnProfile =
+              Boolean(myHandle) &&
+              item.handle.toLowerCase() === myHandle.toLowerCase();
 
             const rankBadgeStyle =
               displayRank === 1
@@ -224,15 +301,17 @@ export default function ArenaLeaderboard({
             return (
               <div
                 key={item.handle}
-                className={`rounded-2xl p-2.5 sm:p-3.5 transition border flex items-center justify-between gap-2.5 sm:gap-4 ${
-                  displayRank === 1
+                className={`rounded-2xl p-3 sm:p-3.5 transition border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4 ${
+                  isOwnProfile
+                    ? "bg-gradient-to-r from-emerald-950/90 via-[#2B071E]/95 to-emerald-950/90 border-emerald-400"
+                    : displayRank === 1
                     ? "bg-gradient-to-r from-[#3D0A2B]/95 via-[#2B071E]/95 to-[#3D0A2B]/95 border-[#FFE600]"
                     : "bg-[#1A0312]/90 hover:bg-[#29061C] border-[#FFE600]/30"
                 }`}
               >
-                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
                   <div
-                    className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl border flex flex-col items-center justify-center font-black shrink-0 ${rankBadgeStyle}`}
+                    className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl border flex flex-col items-center justify-center font-black shrink-0 ${rankBadgeStyle}`}
                   >
                     <span className="text-xs sm:text-sm leading-none">
                       #{displayRank}
@@ -245,7 +324,7 @@ export default function ArenaLeaderboard({
                   {/* Mini Cream Polaroid Thumbnail */}
                   <div
                     onClick={() => onInspectProfile(item)}
-                    className="w-11 h-11 sm:w-13 sm:h-13 rounded-xl p-0.5 bg-[#FFF6E3] border-2 border-[#D97706] shrink-0 cursor-pointer overflow-hidden"
+                    className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl p-0.5 bg-[#FFF6E3] border-2 border-[#D97706] shrink-0 cursor-pointer overflow-hidden"
                   >
                     <img
                       src={item.patakhaImageUrl}
@@ -256,23 +335,49 @@ export default function ArenaLeaderboard({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span
                         onClick={() => onInspectProfile(item)}
                         className="font-black text-sm sm:text-base text-white hover:text-[#FFE600] cursor-pointer truncate transition"
                       >
                         @{item.handle}
                       </span>
+                      {isOwnProfile && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/50 text-emerald-300 text-[10px] font-black shrink-0">
+                          YOU
+                        </span>
+                      )}
                       {displayRank === 1 && (
-                        <Crown className="w-3.5 h-3.5 text-[#FFE600] shrink-0" />
+                        <Crown className="w-4 h-4 text-[#FFE600] fill-[#FFE600] shrink-0" />
+                      )}
+                      {item.inActiveBattle && item.activeBattleRival && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onJoinActiveBattle?.(
+                              item.handle,
+                              item.activeBattleRival!,
+                              item.activeBattleHours || 12
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-600/90 hover:bg-rose-500 border border-[#FFE600] text-white text-[10px] font-black shadow animate-pulse"
+                          title={`Click to view live 1v1 Battle: @${item.handle} vs @${item.activeBattleRival}`}
+                        >
+                          <Swords className="w-3 h-3 text-[#FFE600]" />
+                          <span>
+                            In 1v1 vs @{item.activeBattleRival} (
+                            {item.activeBattleHours || 12}h)
+                          </span>
+                        </button>
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FFE600]/15 border border-[#FFE600]/40 text-[#FFE600] max-w-[130px] sm:max-w-none truncate">
-                        {item.patakhaEmoji} {item.patakhaName}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-extrabold bg-[#FFE600]/15 border border-[#FFE600]/40 text-[#FFE600] truncate max-w-[175px] sm:max-w-none">
+                        <span>{item.patakhaEmoji}</span>
+                        <span className="truncate">{item.patakhaName}</span>
                       </span>
-                      <span className="text-[10px] sm:text-xs font-bold text-emerald-300 inline-flex items-center gap-0.5">
+                      <span className="text-[10px] sm:text-xs font-bold text-emerald-300 inline-flex items-center gap-0.5 shrink-0">
                         <Users className="w-3 h-3 shrink-0" />#{item.clanRank}/
                         {item.clanTotalCount}
                       </span>
@@ -280,57 +385,65 @@ export default function ArenaLeaderboard({
                   </div>
                 </div>
 
-                {/* Right: 1v1 Battle + View + Copy Link + Vote Button */}
-                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                  {onStartBattleWithProfile && (
+                {/* Action Row */}
+                <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 pt-2 sm:pt-0 border-t border-white/10 sm:border-t-0 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    {onStartBattleWithProfile && (
+                      <button
+                        type="button"
+                        onClick={() => onStartBattleWithProfile(item)}
+                        className="px-2.5 py-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/35 text-[11px] sm:text-xs font-black transition inline-flex items-center gap-1"
+                        title={`Start 1v1 Battle with @${item.handle}`}
+                      >
+                        <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        <span>1v1</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      onClick={() => onStartBattleWithProfile(item)}
-                      className="p-2 rounded-xl bg-white/10 hover:bg-[#FFE600] text-[#FFE600] hover:text-[#380828] border border-[#FFE600]/35 text-xs font-black transition inline-flex items-center gap-1"
-                      title={`Start 1v1 Battle with @${item.handle}`}
+                      onClick={() => handleCopyUserShareUrl(item.handle)}
+                      className="px-2.5 py-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-[#FFE600]/35 text-amber-100 text-[11px] sm:text-xs font-extrabold transition inline-flex items-center gap-1"
+                      title="Copy Direct Voting Link"
                     >
-                      <Swords className="w-4 h-4" />
-                      <span className="hidden md:inline">1v1</span>
+                      {copiedHandle === item.handle ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
+                          <span className="sm:hidden text-emerald-300">
+                            Copied
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FFE600]" />
+                          <span className="sm:hidden">Link</span>
+                        </>
+                      )}
                     </button>
-                  )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleCopyUserShareUrl(item.handle)}
-                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-[#FFE600]/35 text-amber-100 text-xs font-extrabold transition"
-                    title="Copy Direct Voting Link"
-                  >
-                    {copiedHandle === item.handle ? (
-                      <Check className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <Link2 className="w-4 h-4 text-[#FFE600]" />
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onInspectProfile(item)}
-                    className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-[#FFE600]/35 text-amber-100 text-xs font-extrabold transition inline-flex items-center gap-1"
-                    title="Open Voting Page"
-                  >
-                    <Eye className="w-4 h-4 text-[#FFE600]" />
-                    <span className="hidden sm:inline">View</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onInspectProfile(item)}
+                      className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-[#FFE600]/35 text-amber-100 text-[11px] sm:text-xs font-extrabold transition inline-flex items-center gap-1"
+                      title="Open Voting Page"
+                    >
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#FFE600]" />
+                      <span>View</span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"
                     disabled={votingHandle === item.handle || hasVoted}
                     onClick={() => onVote(item.handle)}
-                    className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl font-black text-xs sm:text-sm border shadow active:scale-95 transition ${
+                    className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-black text-xs sm:text-sm border shadow active:scale-95 transition ${
                       hasVoted
                         ? "bg-emerald-700/90 text-white border-emerald-300/60"
                         : "bg-gradient-to-r from-[#FF9F1C] via-[#FF5400] to-[#EF233C] text-white border-[#FFE600]/60"
                     }`}
                   >
                     <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-[#FFE600]" />
-                    <span className="hidden xs:inline">
-                      {hasVoted ? "Voted" : "Vote"}
-                    </span>
+                    <span>{hasVoted ? "Voted" : "Vote"}</span>
                     <span className="px-1.5 py-0.5 rounded bg-black/40 text-[#FFE600] text-[11px]">
                       {item.votes}
                     </span>

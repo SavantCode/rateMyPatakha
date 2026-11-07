@@ -55,13 +55,17 @@ function toDisplayName(baseName: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// High-traffic cache for `./cards` directory scan so disk I/O doesn't block requests
+// High-traffic cache for `./cards` directory scan so disk I/O never blocks requests
 const globalForCardsCache = globalThis as unknown as {
   cachedPatakhas?: PatakhaArchetype[];
   cachedAt?: number;
+  resolvedFileCache?: Map<
+    string,
+    { filePath: string | null; archetype: PatakhaArchetype }
+  >;
 };
 
-const CARDS_CACHE_TTL_MS = 10_000;
+const CARDS_CACHE_TTL_MS = 300_000; // 5 minutes in production
 
 export function getAvailablePatakhas(): PatakhaArchetype[] {
   const now = Date.now();
@@ -137,9 +141,17 @@ export function resolveCardFileById(patakhaId: string): {
   filePath: string | null;
   archetype: PatakhaArchetype;
 } {
+  const key = patakhaId.toLowerCase();
+  if (!globalForCardsCache.resolvedFileCache) {
+    globalForCardsCache.resolvedFileCache = new Map();
+  }
+  const cached = globalForCardsCache.resolvedFileCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
   const patakhas = getAvailablePatakhas();
-  const matched =
-    patakhas.find((p) => p.id === patakhaId.toLowerCase()) || patakhas[0];
+  const matched = patakhas.find((p) => p.id === key) || patakhas[0];
 
   const cwd = process.cwd();
   const candidateDirs = [
@@ -152,9 +164,13 @@ export function resolveCardFileById(patakhaId: string): {
   for (const dir of candidateDirs) {
     const fullPath = path.join(dir, matched.fileName);
     if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-      return { filePath: fullPath, archetype: matched };
+      const result = { filePath: fullPath, archetype: matched };
+      globalForCardsCache.resolvedFileCache.set(key, result);
+      return result;
     }
   }
 
-  return { filePath: null, archetype: matched };
+  const fallbackResult = { filePath: null, archetype: matched };
+  globalForCardsCache.resolvedFileCache.set(key, fallbackResult);
+  return fallbackResult;
 }

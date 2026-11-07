@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-export const dynamic = "force-dynamic";
-
 const IMAGE_EXTENSIONS = new Set([
   ".webp",
   ".png",
@@ -12,6 +10,15 @@ const IMAGE_EXTENSIONS = new Set([
   ".svg",
   ".avif",
 ]);
+
+interface CachedBg {
+  buffer: Buffer;
+  mimeType: string;
+}
+
+const globalForBg = globalThis as unknown as {
+  cachedBgImage?: CachedBg;
+};
 
 function getMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
@@ -33,6 +40,16 @@ function getMimeType(filePath: string): string {
 }
 
 export async function GET() {
+  if (globalForBg.cachedBgImage) {
+    return new NextResponse(new Uint8Array(globalForBg.cachedBgImage.buffer), {
+      headers: {
+        "Content-Type": globalForBg.cachedBgImage.mimeType,
+        "Cache-Control":
+          "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
+      },
+    });
+  }
+
   const cwd = process.cwd();
   const exactCandidates = [
     path.join(cwd, "background img", "diwali backround.webp"),
@@ -43,16 +60,18 @@ export async function GET() {
   for (const candidate of exactCandidates) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
       const buf = fs.readFileSync(candidate);
-      return new NextResponse(buf, {
+      const mimeType = getMimeType(candidate);
+      globalForBg.cachedBgImage = { buffer: buf, mimeType };
+      return new NextResponse(new Uint8Array(buf), {
         headers: {
-          "Content-Type": getMimeType(candidate),
-          "Cache-Control": "no-store",
+          "Content-Type": mimeType,
+          "Cache-Control":
+            "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
         },
       });
     }
   }
 
-  // Fallback: scan `background img` folder for any image file
   const dirCandidates = [
     path.join(cwd, "background img"),
     path.join(cwd, "public", "background img"),
@@ -66,10 +85,13 @@ export async function GET() {
       if (files.length > 0) {
         const chosen = path.join(dir, files[0]);
         const buf = fs.readFileSync(chosen);
-        return new NextResponse(buf, {
+        const mimeType = getMimeType(chosen);
+        globalForBg.cachedBgImage = { buffer: buf, mimeType };
+        return new NextResponse(new Uint8Array(buf), {
           headers: {
-            "Content-Type": getMimeType(chosen),
-            "Cache-Control": "no-store",
+            "Content-Type": mimeType,
+            "Cache-Control":
+              "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
           },
         });
       }
