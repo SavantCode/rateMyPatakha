@@ -1,8 +1,13 @@
 # Changelog — Rate My Patakha 🧨
 
+## [3.8.3] - Remove Deprecated `downlevelIteration` from `tsconfig.json`
+- **What Changed**:
+  1. **Removed Deprecated `"downlevelIteration"` Flag (`tsconfig.json`)**:
+     - Kept `"target": "ES2020"` which natively supports ES2015+ `Map`/`Set` iteration without triggering TypeScript's `Option 'downlevelIteration' is deprecated` warning.
+
 ## [3.8.2] - Fix Vercel Production TypeScript Build (`MapIterator` Target)
 - **What Changed**:
-  1. **Added `"target": "ES2020"` and `"downlevelIteration": true` (`tsconfig.json`)**:
+  1. **Added `"target": "ES2020"` (`tsconfig.json`)**:
      - Fixed the `next build` TypeScript error (`Type 'MapIterator<[string, RateBucket]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher`) during Vercel deployment.
   2. **Updated Rate-Limit Bucket Cleanup (`src/lib/rateLimit.ts`)**:
      - Switched `for (const [k, v] of buckets.entries())` to `buckets.forEach((v, k) => ...)` for clean iteration without iterator downlevel overhead.
