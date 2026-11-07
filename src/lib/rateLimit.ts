@@ -28,9 +28,9 @@ export function checkRateLimit(
 
   // Periodic cleanup to prevent memory growth
   if (buckets.size > 5000) {
-    for (const [k, v] of buckets.entries()) {
+    buckets.forEach((v, k) => {
       if (v.resetAt < now) buckets.delete(k);
-    }
+    });
   }
 
   const existing = buckets.get(key);

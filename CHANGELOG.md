@@ -1,5 +1,12 @@
 # Changelog — Rate My Patakha 🧨
 
+## [3.8.2] - Fix Vercel Production TypeScript Build (`MapIterator` Target)
+- **What Changed**:
+  1. **Added `"target": "ES2020"` and `"downlevelIteration": true` (`tsconfig.json`)**:
+     - Fixed the `next build` TypeScript error (`Type 'MapIterator<[string, RateBucket]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher`) during Vercel deployment.
+  2. **Updated Rate-Limit Bucket Cleanup (`src/lib/rateLimit.ts`)**:
+     - Switched `for (const [k, v] of buckets.entries())` to `buckets.forEach((v, k) => ...)` for clean iteration without iterator downlevel overhead.
+
 ## [3.8.1] - Vercel Hobby Plan Cron Compatibility (`0 0 * * *`)
 - **What Changed**:
   1. **Updated `vercel.json` Cron Schedule for Vercel Hobby Plan (`vercel.json`)**:
