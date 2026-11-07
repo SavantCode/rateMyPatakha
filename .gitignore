@@ -1,0 +1,65 @@
+# ============================================================================
+# Rate My Patakha — Production .gitignore
+# ============================================================================
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Next.js build & cache artifacts
+/.next/
+/out/
+/build/
+next-env.d.ts.bak
+
+# Environment variables & secrets (NEVER commit real credentials)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# TypeScript & compilation caches
+*.tsbuildinfo
+.eslintcache
+
+# Logs & runtime diagnostic reports
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+*.log
+
+# Testing & coverage
+/coverage
+/.nyc_output
+playwright-report/
+test-results/
+
+# Vercel / Deployment artifacts
+.vercel
+.netlify
+
+# macOS / Windows / Linux OS metadata
+.DS_Store
+*.pem
+Thumbs.db
+Desktop.ini
+
+# Editor & IDE directories
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Local temporary uploads or backups
+/tmp/
+/temp/
+*.bak

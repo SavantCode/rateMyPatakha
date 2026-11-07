@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-deep: #1a0612;
+  --gold-primary: #ffd166;
+  --saffron: #ff7b00;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #1a0412;
+  color: #fff8ec;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Comic/Vector Festival Border matching the Shubh Diwali artwork */
+.matchbox-border {
+  border: 2.5px solid #ffe600;
+  box-shadow: 
+    0 0 0 3px #4a1238,
+    0 14px 34px rgba(18, 2, 12, 0.78);
+}
+
+.gold-shimmer {
+  background: linear-gradient(90deg, #fffbeb 0%, #ffe600 35%, #ffffff 50%, #ffd166 65%, #fffbeb 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 4s linear infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* Hide scrollbars on horizontal touch carousels while keeping smooth swipe */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Decoration Bulb Twinkle & Lantern Swing Animations */
+@keyframes bulbTwinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes lanternSwing {
+  0%, 100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+.animate-bulb-twinkle {
+  animation: bulbTwinkle 2.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-bulb-twinkle-slow {
+  animation: bulbTwinkle 3.4s ease-in-out infinite 0.9s;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-lantern-swing {
+  animation: lanternSwing 4.5s ease-in-out infinite;
+}
+
+/* Custom Scrollbar for Desktop */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #2b091f;
+}
+::-webkit-scrollbar-thumb {
+  background: #ff7b00;
+  border-radius: 9999px;
+}
