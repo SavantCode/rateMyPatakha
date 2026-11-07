@@ -621,7 +621,6 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
     });
   }
 
-  // Map active non-expired battles to each participant handle so Leaderboard & Cards can show "⚔️ In Battle"
   const nowMs = Date.now();
   const activeBattleByHandle = new Map<
     string,
@@ -668,7 +667,6 @@ async function buildFreshArenaSnapshot(): Promise<ArenaSnapshot> {
     return ranked;
   });
 
-  // Build hydrated RankedArenaBattle list
   const activeBattles: RankedArenaBattle[] = [];
   for (const b of rawBattles) {
     const cleanA = sanitizeHandle(b.handleA);
@@ -933,9 +931,7 @@ export async function getOrCreateArenaProfile(
 
 /**
  * Creates, updates, or retrieves a 1v1 Head-to-Head Battle in MongoDB & memory.
- * - Ensures both `handleA` and `handleB` exist as registered Arena profiles.
- * - Saves `{ id, handleA, handleB, hours, startMs, endMs, createdAt, updatedAt }` in DB.
- * - Broadcasts a `"battle"` event to `recentEvents` so all users on the site see the matchup live!
+ * - Uses server-side `Date.now()` for new or restarted battles so clients cannot forge expired timestamps.
  */
 export async function startOrSyncArenaBattle(params: {
   handleA: string;
@@ -1005,10 +1001,9 @@ export async function startOrSyncArenaBattle(params: {
   let finalBattleDoc: ArenaBattle;
 
   if (shouldCreateOrUpdate) {
+    // Server-enforced start timestamp: use now for new/restarted battles, or preserve existingBattle.startMs
     const resolvedStartMs =
-      params.startMs && !Number.isNaN(params.startMs) && !params.forceUpdate
-        ? Math.min(now, Math.max(now - 30 * 86_400_000, params.startMs))
-        : now;
+      existingBattle && !params.forceUpdate ? existingBattle.startMs : now;
     const resolvedEndMs = resolvedStartMs + clampedHours * ONE_HOUR_MS;
 
     finalBattleDoc = {
@@ -1079,15 +1074,12 @@ export async function startOrSyncArenaBattle(params: {
 
 /**
  * Casts an upvote for `rawHandle`.
- * Also implements the "Upvote 3 Other Users = +1 Bonus Vote for Your Own Score" rule:
- * whenever a voter upvotes a 3rd other user (3, 6, 9, 12...), `voterHandle` automatically
- * gets +1 vote in real time in both MongoDB and memory!
+ * Strictly tracks "Upvote 3 Other Users = +1 Bonus Vote" server-side (never trusting client counts).
  */
 export async function voteForProfile(
   rawHandle: string,
   voterHash: string,
-  rawVoterHandle?: string,
-  clientOthersVotedCount?: number
+  rawVoterHandle?: string
 ): Promise<{
   profile: RankedArenaProfile | null;
   bonusProfile: RankedArenaProfile | null;
@@ -1167,9 +1159,9 @@ export async function voteForProfile(
     }
   }
 
-  // Track how many other users this voter has upvoted and award +1 self bonus every 3 upvotes
+  // Server-authoritative tracking of how many OTHER users this voter has upvoted
   const countsMap = getVoterGivenCountsMap();
-  const voterTrackingKey = cleanVoterHandle || voterHash || "anon";
+  const voterTrackingKey = voterHash || cleanVoterHandle || "anon";
   let othersVotedCount = countsMap.get(voterTrackingKey) || 0;
   let bonusAwarded = false;
 
@@ -1179,32 +1171,17 @@ export async function voteForProfile(
         const progressCol = db.collection<{ _id: string; count: number }>(
           "voter_progress"
         );
-        const existingProg = await progressCol.findOne({
-          _id: voterTrackingKey,
-        });
-        const baseDbCount = existingProg?.count || 0;
-        const nextCount = Math.max(
-          baseDbCount + 1,
-          othersVotedCount + 1,
-          clientOthersVotedCount || 0
-        );
-        othersVotedCount = nextCount;
-        await progressCol.updateOne(
+        const updatedProg = await progressCol.findOneAndUpdate(
           { _id: voterTrackingKey },
-          { $set: { count: othersVotedCount } },
-          { upsert: true }
+          { $inc: { count: 1 } },
+          { upsert: true, returnDocument: "after" }
         );
+        othersVotedCount = updatedProg?.count ?? othersVotedCount + 1;
       } catch {
-        othersVotedCount = Math.max(
-          othersVotedCount + 1,
-          clientOthersVotedCount || 0
-        );
+        othersVotedCount += 1;
       }
     } else {
-      othersVotedCount = Math.max(
-        othersVotedCount + 1,
-        clientOthersVotedCount || 0
-      );
+      othersVotedCount += 1;
     }
 
     countsMap.set(voterTrackingKey, othersVotedCount);
