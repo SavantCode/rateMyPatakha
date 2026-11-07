@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/hourly-votes",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

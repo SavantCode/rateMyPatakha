@@ -1,5 +1,11 @@
 # Changelog — Rate My Patakha 🧨
 
+## [3.8.1] - Vercel Hobby Plan Cron Compatibility (`0 0 * * *`)
+- **What Changed**:
+  1. **Updated `vercel.json` Cron Schedule for Vercel Hobby Plan (`vercel.json`)**:
+     - Changed the cron schedule from `"0 * * * *"` (hourly) to `"0 0 * * *"` (once daily at midnight UTC) to comply with Vercel Hobby plan limits.
+     - Hourly `+1` vote increments continue to happen automatically every hour via the lazy hour-slot check inside `loadProfilesAndBattlesFromSource()` and `getArenaSnapshot()` in `src/lib/store.ts`.
+
 ## [3.8.0] - Final Production Security Audit & Vercel Hosting Readiness
 - **What Changed**:
   1. **Eliminated Client-Side Bonus Vote Manipulation (`src/lib/store.ts` & `src/app/api/vote/route.ts`)**:
@@ -10,10 +16,3 @@
      - Hardened `startOrSyncArenaBattle()` so newly created or restarted 1v1 battles always use the server's `Date.now()` timestamp rather than trusting client-supplied `startMs`.
   4. **Production Security Headers & Image Host Whitelisting (`next.config.mjs`)**:
      - Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, disabled `X-Powered-By`, and restricted `images.remotePatterns` to Substack domains.
-
-## [3.7.0] - Top-Layer Fairy Lights on Scroll (`z-40`) & Mobile Hanging Lamps (Akash Kandils)
-- **What Changed**:
-  1. **Fairy Lights & Hanging Lamps Always on Top When Scrolling (`src/components/DiwaliDecorationLights.tsx`)**:
-     - Elevated `DiwaliDecorationLights` from `z-10` to `z-40 pointer-events-none` so all scrolling page content slides underneath the glowing fairy lights and swaying lamps instead of covering them.
-  2. **Visible Hanging Lamps on Mobile, Tablet & Desktop (`src/components/DiwaliDecorationLights.tsx`)**:
-     - Enabled the left and right swaying Akash Kandil lamps on all mobile, tablet, and desktop screen sizes.
